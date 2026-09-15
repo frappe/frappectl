@@ -113,7 +113,9 @@ method, make the safe verb explicit: `frappectl api method/… -X GET`.
 - TTY → rich tables and colours.
 - Pipe or `--json` → clean JSON on stdout. Logs and errors stay on stderr, so piping to
   `jq` is safe.
-- Mutations → run immediately, no confirmation prompt. It's assumed you know what you're doing.
+- Mutations → the CLI itself never prompts. Confirmation is the job of the caller,
+  whether that is you or an agent harness. Use a read-only profile to make mistakes
+  impossible on sites that matter.
 - Exit codes → `0` success, `1` failure, `2` usage error.
 - `--debug` → traces method, URL and headers to stderr. Credentials are redacted. For
   endpoints that expose it, such as `doc list`, it also prints server-side SQL.
