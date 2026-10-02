@@ -10,8 +10,11 @@ gets a private config directory under frappectl's own config folder
 at it and populate it just before launch, then ``exec`` the tool so its TUI owns
 the terminal. That lets us:
 
-  * codex  — supply a global AGENTS.md (codex has no --append-system-prompt),
-             while symlinking auth.json/config.toml so login/config still work.
+  * codex     — supply a global AGENTS.md (codex has no --append-system-prompt),
+               while symlinking auth.json/config.toml so login/config still work.
+  * opencode  — resolves --agent by name, scanning {agent,agents}/**/*.md under
+               its config dirs. We write frappe.md into ~/.config/opencode/agents/
+               so opencode picks it up by name.
 
 pi, claude and flow all take --append-system-prompt, so they launch with flags
 only and use their own real config dir (auth included) untouched.
@@ -116,6 +119,18 @@ def _claude_build(system_prompt: str, tool_dir: Path) -> Launch:
     return Launch(argv=["claude", "--append-system-prompt", system_prompt])
 
 
+def _opencode_build(system_prompt: str, tool_dir: Path) -> Launch:
+    # opencode resolves --agent by name, scanning {agent,agents}/**/*.md under
+    # its config dirs. We write frappe.md into ~/.config/opencode/agents/ so
+    # opencode picks it up by name. The writes list supports absolute paths.
+    agent_path = str(Path.home() / ".config" / "opencode" / "agents" / "frappe.md")
+    frontmatter = "---\ndescription: Frappe assistant\n---\n"
+    return Launch(
+        argv=["opencode", "--agent", "frappe"],
+        writes=[(agent_path, frontmatter + system_prompt + "\n")],
+    )
+
+
 def _flow_build(system_prompt: str, tool_dir: Path) -> Launch:
     # flow is a client/server harness: `flow web` runs the daemon, serves the
     # web UI and opens a browser tab. The prompt goes to every session the UI
@@ -130,6 +145,7 @@ TOOLS: list[Tool] = [
     Tool(name="claude", binary="claude", build=_claude_build),
     Tool(name="codex", binary="codex", build=_codex_build),
     Tool(name="flow", binary="flow", build=_flow_build),
+    Tool(name="opencode", binary="opencode", build=_opencode_build),
 ]
 _TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
@@ -162,7 +178,9 @@ def _materialize(launch: Launch, tool_dir: Path) -> None:
     """Apply the launch's planned filesystem side effects."""
     tool_dir.mkdir(parents=True, exist_ok=True)
     for name, content in launch.writes:
-        (tool_dir / name).write_text(content)
+        path = Path(name) if Path(name).is_absolute() else tool_dir / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
     for name, target in launch.symlinks:
         link = tool_dir / name
         if link.is_symlink():
@@ -178,7 +196,7 @@ def assistant(
     ctx: typer.Context,
     tool: Optional[str] = typer.Argument(
         None,
-        help="Agent tool to launch: pi, claude, codex or flow. Defaults to the "
+        help="Agent tool to launch: pi, claude, codex, flow or opencode. Defaults to the "
         "first one installed.",
     ),
     dry_run: bool = typer.Option(
@@ -190,10 +208,10 @@ def assistant(
 ) -> None:
     """Launch a CLI coding agent wired up as a Frappe assistant.
 
-    Starts a supported agent tool (pi, claude, codex or flow) with a Frappe
-    system prompt, so it drives `frappectl` against your authenticated sites.
-    `flow` opens its web UI in a browser; the others own the terminal. Anything
-    after `--` is passed straight through to the tool, e.g.:
+    Starts a supported agent tool (pi, claude, codex, flow or opencode) with a
+    Frappe system prompt, so it drives `frappectl` against your authenticated
+    sites. `flow` opens its web UI in a browser; the others own the terminal.
+    Anything after `--` is passed straight through to the tool, e.g.:
 
     frappectl assistant pi -- "list overdue invoices on staging"
     """

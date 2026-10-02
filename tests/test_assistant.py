@@ -13,7 +13,7 @@ runner = CliRunner()
 def _isolate(monkeypatch, tmp_path):
     """Installed binaries, an isolated frappe config dir, and a deterministic
     site block, so tests never depend on the developer's real setup."""
-    installed = {"pi", "claude", "codex", "flow", "frappectl"}
+    installed = {"pi", "claude", "codex", "flow", "opencode", "frappectl"}
     monkeypatch.setattr(
         assistant.shutil, "which", lambda name: name if name in installed else None
     )
@@ -81,6 +81,29 @@ def test_claude_gets_append_flag():
     assert argv[0] == "claude"
     assert "--append-system-prompt" in argv
     assert "--system-prompt" not in argv
+
+
+def test_opencode_writes_agent_file_and_uses_agent_flag(tmp_path):
+    launch = assistant._opencode_build("SYSTEM PROMPT", tmp_path / "out")
+    assert launch.argv == ["opencode", "--agent", "frappe"]
+    path, content = launch.writes[0]
+    assert path.endswith(".config/opencode/agents/frappe.md")
+    assert "SYSTEM PROMPT" in content
+    assert "description: Frappe assistant" in content
+
+
+def test_opencode_dry_run_shows_agent_file_path():
+    result = runner.invoke(app, ["assistant", "opencode", "--dry-run"])
+    assert result.exit_code == 0
+    assert _argv(result) == ["opencode", "--agent", "frappe"]
+    assert "frappe.md" in result.stdout
+
+
+def test_materialize_supports_absolute_write_path(tmp_path):
+    abs_file = tmp_path / "abs" / "agent.md"
+    launch = assistant.Launch(argv=["x"], writes=[(str(abs_file), "content")])
+    assistant._materialize(launch, tmp_path / "tool_dir")
+    assert abs_file.read_text() == "content"
 
 
 def test_flow_starts_web_with_append_flag():
