@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import Any, BinaryIO
 
@@ -103,16 +104,16 @@ class FrappeClient:
 
     def execute_read_only_sql(self, query: str) -> Any:
         """Execute SQL through System Console's server-enforced read-only path."""
+        # execute_code is annotated `doc: str` and calls json.loads itself, so a dict fails type validation.
+        doc = {
+            "doctype": "System Console",
+            "type": "SQL",
+            "console": query,
+            "commit": 0,
+        }
         return self._transport.request_read_only_post(
             "/api/v2/method/frappe.desk.doctype.system_console.system_console.execute_code",
-            json_body={
-                "doc": {
-                    "doctype": "System Console",
-                    "type": "SQL",
-                    "console": query,
-                    "commit": 0,
-                }
-            },
+            json_body={"doc": json.dumps(doc)},
         )
 
     def get_logged_user(self) -> str:

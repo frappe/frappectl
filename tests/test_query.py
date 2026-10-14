@@ -33,13 +33,12 @@ def test_query_sends_system_console_sql_and_emits_json(env):
     assert result.exit_code == 0
     assert json.loads(result.stdout) == [{"count(*)": 4}]
     sent = json.loads(route.calls.last.request.content)
-    assert sent == {
-        "doc": {
-            "doctype": "System Console",
-            "type": "SQL",
-            "console": "select count(*) from tabUser",
-            "commit": 0,
-        }
+    assert isinstance(sent["doc"], str)
+    assert json.loads(sent["doc"]) == {
+        "doctype": "System Console",
+        "type": "SQL",
+        "console": "select count(*) from tabUser",
+        "commit": 0,
     }
 
 
@@ -76,7 +75,7 @@ def test_query_reads_stdin(env):
 
     assert result.exit_code == 0
     sent = json.loads(route.calls.last.request.content)
-    assert sent["doc"]["console"] == "select 1\n"
+    assert json.loads(sent["doc"])["console"] == "select 1\n"
 
 
 @respx.mock
