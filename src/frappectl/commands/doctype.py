@@ -32,19 +32,13 @@ def list_doctypes(
     if custom:
         filters["custom"] = 1
     try:
-        rows, _ = client.list_documents(
-            "DocType",
-            fields=["name"],
-            filters=filters or None,
-            order_by="name asc",
-            limit=limit,
-        )
+        names = client.list_doctypes(filters, limit)
     except FrappeError as e:
         raise fail(e.message)
     if c.json:
-        print_json([row.get("name") for row in rows])
+        print_json(names)
         return
-    emit_list(c, rows, ["name"])
+    emit_list(c, [{"name": name} for name in names], ["name"])
 
 
 def _summarize_field(df: Document, in_list_view: bool = False) -> Document:

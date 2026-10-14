@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 import respx
@@ -381,3 +383,24 @@ def test_debug_redacts_bearer_scheme(capsys):
     err = capsys.readouterr().err
     assert "authorization: Bearer ***" in err
     assert "ACCESS" not in err
+
+
+@respx.mock
+def test_list_doctypes_uses_link_search():
+    route = respx.get(f"{BASE}/api/v2/method/frappe.desk.search.search_link").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"value": "ToDo", "description": "Desk"},
+                    {"value": "Note", "description": "Desk"},
+                ]
+            },
+        )
+    )
+    names = client().list_doctypes({"module": "Desk"}, 50)
+    assert names == ["Note", "ToDo"]
+    params = route.calls.last.request.url.params
+    assert params["doctype"] == "DocType"
+    assert params["page_length"] == "50"
+    assert json.loads(params["filters"]) == {"module": "Desk"}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import Any, BinaryIO
 
@@ -88,6 +89,21 @@ class FrappeClient:
 
     def get_meta(self, doctype: str) -> Document:
         return self.documents.meta(doctype)
+
+    def list_doctypes(self, filters: dict[str, Any] | None, limit: int) -> list[str]:
+        # Reading DocType documents needs System Manager, but link search on DocType
+        # ignores permissions, so every desk user can list them. Meta is open anyway.
+        rows = self.call_method(
+            "frappe.desk.search.search_link",
+            params={
+                "doctype": "DocType",
+                "txt": "",
+                "filters": json.dumps(filters or {}),
+                "page_length": limit,
+            },
+            http_method="GET",
+        )
+        return sorted(row["value"] for row in rows)
 
     def get_count(self, doctype: str, filters: Filters | None = None) -> int:
         return self.documents.count(doctype, filters)
