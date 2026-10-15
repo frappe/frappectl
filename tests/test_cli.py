@@ -161,12 +161,12 @@ def test_guide_runs_without_auth():
     assert "frappectl api" in result.stdout
 
 
-def test_guide_tells_agents_not_to_touch_credentials():
+def test_guide_teaches_agents_to_configure_access():
     result = runner.invoke(app, ["guide"])
     assert result.exit_code == 0
-    assert "Do not run auth commands" in result.stdout
-    assert "modify FRAPPE_*" in result.stdout
-    assert "auth login" not in result.stdout
+    assert "Do not run auth commands" not in result.stdout
+    assert "frappectl auth configure" in result.stdout
+    assert "frappectl auth login <url> --oauth" in result.stdout
 
 
 def test_guide_lists_configured_sites(monkeypatch):

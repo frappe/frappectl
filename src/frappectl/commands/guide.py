@@ -23,12 +23,23 @@ Use --json or pipe the output to get clean JSON. Errors and --debug traces go to
 stderr.
 
 SITE ACCESS
-  Access is already configured. Pass -s <profile> when the task names a site.
-  Do not run auth commands. Do not modify FRAPPE_* environment variables.
-  If access fails, ask the human to configure it.
+  Pass -s <profile> when the task names a site.
 
   Configured profiles:
 <<SITES>>
+
+  frappectl auth list                                  # stored profiles
+  frappectl auth whoami -s <profile>                   # check the site and user
+  frappectl auth configure <profile> --name <new> --description "..."
+  frappectl auth configure <profile> --read-only|--writable
+  frappectl auth default <profile>
+  frappectl auth logout <profile>                      # remove a profile
+  frappectl auth login <url> --oauth --name <profile> --description "..."
+
+  Always log in with --oauth. OAuth stores no secret, and its tokens refresh
+  automatically. It needs a terminal and a local browser. If you do not have a
+  terminal, ask the human to run the auth login command above. Do not put
+  credentials in command arguments, files or logs.
 
 ORIENT YOURSELF (do this before you guess a field name or a DocType name)
   frappectl doctype list                           # all DocTypes on the site
@@ -86,7 +97,7 @@ def render_sites() -> str:
     except config.ConfigError:
         profiles, default = {}, None
     if not profiles:
-        return "    (none configured. Ask the human to set up access.)"
+        return "    (none configured. See the auth commands below.)"
     lines = []
     for name, info in profiles.items():
         parts = [f"    - {name}: {info.get('site', '')}"]
