@@ -10,7 +10,7 @@ Using an agent? Start with `frappectl guide`. It fits site selection, core verbs
 filtering and the raw-API escape hatch on one screen.
 
 ```sh
-frappectl auth login https://erp.example.com         # key/secret → OS keyring
+frappectl auth login https://erp.example.com --oauth # browser login → OS keyring
 frappectl -s raven doc list "Raven Channel" --json    # -s/--site selects a profile
 
 frappectl doc list "Sales Invoice" -f status=Overdue -f 'grand_total>1000' \
