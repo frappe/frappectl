@@ -50,6 +50,10 @@ class OAuthProvider:
         self._persist = persist
         self._clock = clock
 
+    @property
+    def credential(self) -> OAuthCredential:
+        return self._credential
+
     def authorization_header(self) -> str:
         if (
             self._credential.refresh_token

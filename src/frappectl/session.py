@@ -6,7 +6,12 @@ from functools import partial
 
 from . import config
 from .client import FrappeClient
-from .credentials import ApiKeyProvider, CredentialRefreshError, OAuthProvider
+from .credentials import (
+    ApiKeyProvider,
+    CredentialProvider,
+    CredentialRefreshError,
+    OAuthProvider,
+)
 from .output import ApplicationContext, fail
 
 
@@ -14,23 +19,25 @@ class ClientFactory:
     def __init__(self, resolver: config.ProfileResolver | None = None):
         self._resolver = resolver or config.ProfileResolver()
 
+    def resolve(self, profile: str | None, *, interactive: bool) -> config.Credentials:
+        try:
+            return self._resolver.resolve(profile, interactive=interactive)
+        except config.ConfigError as e:
+            raise fail(str(e), 2)
+
     def create(
         self, profile: str | None, *, interactive: bool, debug: bool
     ) -> FrappeClient:
-        try:
-            creds = self._resolver.resolve(profile, interactive=interactive)
-        except config.ConfigError as e:
-            raise fail(str(e), 2)
-        provider = (
-            OAuthProvider(
-                creds.site,
-                creds.credential,
-                _refresh_oauth,
-                partial(config.store_oauth_credential, creds.source),
-            )
-            if isinstance(creds.credential, config.OAuthCredential)
-            else ApiKeyProvider(creds.credential.api_key, creds.credential.api_secret)
-        )
+        creds = self.resolve(profile, interactive=interactive)
+        return self.client_for(creds, credential_provider(creds), debug=debug)
+
+    def client_for(
+        self,
+        creds: config.Credentials,
+        provider: CredentialProvider,
+        *,
+        debug: bool,
+    ) -> FrappeClient:
         try:
             return FrappeClient(
                 creds.site,
@@ -42,6 +49,19 @@ class ClientFactory:
             )
         except CredentialRefreshError as e:
             raise fail(str(e), 2)
+
+
+def credential_provider(
+    creds: config.Credentials,
+) -> ApiKeyProvider | OAuthProvider:
+    if isinstance(creds.credential, config.OAuthCredential):
+        return OAuthProvider(
+            creds.site,
+            creds.credential,
+            _refresh_oauth,
+            partial(config.store_oauth_credential, creds.source),
+        )
+    return ApiKeyProvider(creds.credential.api_key, creds.credential.api_secret)
 
 
 def get_client(ctx: ApplicationContext) -> FrappeClient:

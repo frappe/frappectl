@@ -470,3 +470,37 @@ def test_api_get_with_non_object_input_errors(env):
     )
     assert result.exit_code == 2
     assert "must be a JSON object" in result.stderr
+
+
+@respx.mock
+def test_whoami_refreshes_expired_oauth_token(fake_config, monkeypatch):
+    import time
+
+    from frappectl import oauth
+
+    fake_config.add_oauth_profile(
+        "acme",
+        BASE,
+        "client-1",
+        oauth.Tokens("OLD", "RT", time.time() - 10, "bearer"),
+    )
+    new_expiry = time.time() + 3600
+    monkeypatch.setattr(
+        oauth,
+        "refresh",
+        lambda *a: oauth.Tokens("NEW", "RT2", new_expiry, "bearer"),
+    )
+    route = respx.get(f"{BASE}/api/v2/method/frappe.auth.get_logged_user").mock(
+        return_value=httpx.Response(200, json={"data": "user@example.com"})
+    )
+
+    result = runner.invoke(app, ["--json", "auth", "whoami"])
+
+    assert result.exit_code == 0, result.output
+    assert route.calls.last.request.headers["Authorization"] == "Bearer NEW"
+    record = json.loads(result.output)
+    assert record["user"] == "user@example.com"
+    assert record["token_expires_at"].startswith(
+        time.strftime("%Y-%m-%dT%H", time.gmtime(new_expiry))
+    )
+    assert fake_config.oauth_access_token("acme") == "NEW"
