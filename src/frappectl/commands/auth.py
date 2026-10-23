@@ -9,8 +9,10 @@ import typer
 
 from .. import config, oauth
 from ..client import FrappeClient
+from ..credentials import OAuthProvider
 from ..errors import FrappeError
 from ..output import emit_list, err_console, fail, get_ctx
+from ..session import credential_provider
 from ..site import SiteURL
 
 app = typer.Typer(no_args_is_help=True, help="Manage site profiles and credentials.")
@@ -365,14 +367,10 @@ def configure(
 def whoami(ctx: typer.Context) -> None:
     """Show the resolved site and logged-in user for the active profile."""
     c = get_ctx(ctx)
+    creds = c.client_factory.resolve(c.profile, interactive=c.is_tty)
+    provider = credential_provider(creds)
     try:
-        creds = config.resolve(c.profile, interactive=c.is_tty)
-    except config.ConfigError as e:
-        raise fail(str(e), 2)
-    try:
-        with FrappeClient(
-            creds.site, creds.wire_token, token_type=creds.token_type
-        ) as client:
+        with c.client_factory.client_for(creds, provider, debug=c.debug) as client:
             user = client.get_logged_user()
     except FrappeError as e:
         raise fail(e.message)
@@ -386,10 +384,11 @@ def whoami(ctx: typer.Context) -> None:
         "description": creds.description,
         "read_only": creds.read_only,
     }
-    if creds.token_type == "bearer" and creds.expires_at:
+    # Report the token in use after any refresh, not the stale stored one.
+    if isinstance(provider, OAuthProvider) and provider.credential.expires_at:
         import datetime
 
         record["token_expires_at"] = datetime.datetime.fromtimestamp(
-            creds.expires_at, tz=datetime.timezone.utc
+            provider.credential.expires_at, tz=datetime.timezone.utc
         ).isoformat()
     emit_record(c, record)
