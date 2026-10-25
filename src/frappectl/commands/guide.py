@@ -107,8 +107,8 @@ def render_sites() -> str:
         tags = []
         if name == default:
             tags.append("default")
-        if info.get("read_only"):
-            tags.append("read-only")
+        if not info.get("read_only"):
+            tags.append("writable")
         if tags:
             parts.append(f"[{', '.join(tags)}]")
         lines.append(" ".join(parts))

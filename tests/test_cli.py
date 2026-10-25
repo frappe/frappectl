@@ -176,8 +176,8 @@ def test_guide_lists_configured_sites(monkeypatch):
     )
     result = runner.invoke(app, ["guide"])
     assert result.exit_code == 0
-    assert "staging: https://staging.example.com [read-only]" in result.stdout
-    assert "prod: https://prod.example.com — live [default]" in result.stdout
+    assert "staging: https://staging.example.com\n" in result.stdout
+    assert "prod: https://prod.example.com — live [default, writable]" in result.stdout
 
 
 def test_guide_without_profiles_still_renders(monkeypatch):
@@ -186,6 +186,18 @@ def test_guide_without_profiles_still_renders(monkeypatch):
     assert result.exit_code == 0
     assert "(none configured" in result.stdout
     assert "<<SITES>>" not in result.stdout
+
+
+def test_auth_list_marks_writable_profiles(fake_config):
+    fake_config.add_profile("prod", "https://prod.example.com", "k", "s")
+    fake_config.add_profile(
+        "staging", "https://staging.example.com", "k", "s", read_only=True
+    )
+
+    result = runner.invoke(app, ["--json", "auth", "list"])
+    assert result.exit_code == 0
+    writable = {row["profile"]: row["writable"] for row in json.loads(result.stdout)}
+    assert writable == {"prod": True, "staging": False}
 
 
 def test_login_refuses_non_interactive():
