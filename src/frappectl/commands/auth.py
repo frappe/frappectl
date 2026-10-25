@@ -247,17 +247,17 @@ def list_profiles(ctx: typer.Context) -> None:
     rows = [
         {
             "profile": name,
-            # Writes are the risk, so mark the profiles that allow them.
-            "writable": not info.get("read_only", False),
             "site": info.get("site", ""),
             "auth": info.get("auth", "api_key"),
             "description": info.get("description", ""),
+            # Writes are the risk, so mark the profiles that allow them.
+            "writable": not info.get("read_only", False),
             "default": name == default,
         }
         for name, info in profiles.items()
     ]
     emit_list(
-        c, rows, ["profile", "writable", "site", "auth", "description", "default"]
+        c, rows, ["profile", "site", "auth", "description", "writable", "default"]
     )
     if not rows and not c.json:
         err_console.print(
