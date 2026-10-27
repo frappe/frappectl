@@ -53,6 +53,9 @@ _CALLBACK_PATH = "/callback"
 
 LOGIN_TIMEOUT = 300.0
 _POLL_INTERVAL = 1.0
+# The wait loop watches the terminal with select(), which takes only sockets
+# on Windows, so a pasted redirect is accepted on POSIX alone.
+PASTE_SUPPORTED = os.name == "posix"
 
 # Scopes: ``openid`` lets us confirm identity via the userinfo endpoint;
 # ``all`` grants the same API surface an API key would.

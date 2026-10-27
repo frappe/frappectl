@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from typing import Optional
 
@@ -181,9 +180,7 @@ def _login_oauth(
     # litter the site with new OAuth Client rows; an explicit --client-id wins.
     resolved_client_id = client_id or config.oauth_client_id(profile)
 
-    # select() can watch a terminal only on POSIX, so the paste fallback is
-    # offered there; elsewhere the loopback redirect is the only path.
-    paste = sys.stdin if os.name == "posix" else None
+    paste = sys.stdin if oauth.PASTE_SUPPORTED else None
 
     def announce(url: str) -> None:
         err_console.print(
