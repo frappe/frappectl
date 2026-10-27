@@ -27,6 +27,7 @@ exact URI.
 
 from __future__ import annotations
 
+import os
 import secrets
 import select
 import time
@@ -183,6 +184,10 @@ class _LoopbackServer(HTTPServer):
 
 
 class _CallbackHandler(BaseHTTPRequestHandler):
+    # Bound the read of a stalled connection (a browser preconnect that sends
+    # nothing), so it cannot hold up the wait loop and the paste fallback.
+    timeout = _POLL_INTERVAL
+
     def do_GET(self) -> None:  # noqa: N802 (http.server naming)
         server = cast("_LoopbackServer", self.server)
         parsed = urllib.parse.urlparse(self.path)
@@ -335,17 +340,22 @@ def _await_redirect(
         if open_browser:
             webbrowser.open(authorize_url)
         deadline = time.monotonic() + timeout
+        pasted = b""
         while server.result is None and time.monotonic() < deadline:
             sources: list[HTTPServer | TextIO] = [server, paste] if paste else [server]
             ready, _, _ = select.select(sources, [], [], _POLL_INTERVAL)
             if server in ready:
                 server.handle_request()
             elif paste and paste in ready:
-                line = paste.readline()
-                if line:
-                    server.result = _parse_pasted_redirect(line)
-                else:
+                # Read only what is available: readline() would block on a
+                # partial line (ended by Ctrl-D) and starve the loopback.
+                chunk = os.read(paste.fileno(), 4096)
+                if not chunk:
                     paste = None  # EOF: keep waiting on the loopback alone.
+                pasted += chunk
+                if b"\n" in pasted:
+                    line = pasted.partition(b"\n")[0].decode(errors="replace")
+                    server.result = _parse_pasted_redirect(line)
     finally:
         server.server_close()
 
