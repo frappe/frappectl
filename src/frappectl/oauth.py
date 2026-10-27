@@ -16,7 +16,9 @@ cover is Frappe-specific and lives here:
    dynamically register a *public* client (RFC 7591) whose one redirect URI is
    our fixed loopback URL, and hand the ``client_id`` back to the caller to
    persist. Otherwise the caller must supply a pre-registered public client id.
-3. Catch the browser **redirect** on a one-shot loopback server.
+3. Catch the browser **redirect** on a one-shot loopback server, or accept the
+   redirect URL pasted into the terminal when the browser runs on another
+   machine (an SSH session), where the loopback is unreachable.
 
 Frappe matches redirect URIs byte-for-byte (it does *not* honour RFC 8252's
 "any loopback port" rule), so we use a **fixed** loopback port and register that
@@ -26,13 +28,14 @@ exact URI.
 from __future__ import annotations
 
 import secrets
+import select
 import time
 import urllib.parse
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, cast
+from typing import Any, TextIO, cast
 
 import httpx2
 from authlib.common.errors import AuthlibBaseError
@@ -241,12 +244,17 @@ def login(
     open_browser: bool = True,
     timeout: float = LOGIN_TIMEOUT,
     announce: Callable[[str], None] | None = None,
+    paste: TextIO | None = None,
 ) -> tuple[Tokens, str]:
     """Run the full authorization-code + PKCE flow. Return ``(tokens, client_id)``.
 
     ``client_id`` is resolved automatically: dynamic registration when the site
     advertises it, otherwise the supplied value. The resolved id is returned so
     the caller can persist it and reuse it on later logins.
+
+    ``paste`` is a stream (the terminal) watched alongside the loopback. A line
+    read from it is taken as the redirect URL, copied from the browser's address
+    bar when the redirect could not reach this machine.
 
     ``open_browser=False`` and the ``announce`` hook exist so the browser leg can
     be driven in tests (post the code to the loopback directly).
@@ -278,6 +286,7 @@ def login(
         open_browser=open_browser,
         timeout=timeout,
         announce=announce,
+        paste=paste,
     )
     if result.get("error"):
         raise OAuthError(_redirect_error(result))
@@ -307,6 +316,7 @@ def _await_redirect(
     open_browser: bool,
     timeout: float,
     announce: Callable[[str], None] | None,
+    paste: TextIO | None,
 ) -> dict[str, str]:
     try:
         server = _LoopbackServer((_LOOPBACK_HOST, port), _CallbackHandler)
@@ -326,7 +336,16 @@ def _await_redirect(
             webbrowser.open(authorize_url)
         deadline = time.monotonic() + timeout
         while server.result is None and time.monotonic() < deadline:
-            server.handle_request()
+            sources: list[HTTPServer | TextIO] = [server, paste] if paste else [server]
+            ready, _, _ = select.select(sources, [], [], _POLL_INTERVAL)
+            if server in ready:
+                server.handle_request()
+            elif paste and paste in ready:
+                line = paste.readline()
+                if line:
+                    server.result = _parse_pasted_redirect(line)
+                else:
+                    paste = None  # EOF: keep waiting on the loopback alone.
     finally:
         server.server_close()
 
@@ -336,6 +355,20 @@ def _await_redirect(
             "in the browser, or retry."
         )
     return server.result
+
+
+def _parse_pasted_redirect(text: str) -> dict[str, str]:
+    """Read the redirect parameters from a pasted URL (or its bare query)."""
+    text = text.strip()
+    query = urllib.parse.urlparse(text).query or text
+    params = urllib.parse.parse_qs(query)
+    flat = {k: v[0] for k, v in params.items() if v}
+    if "code" not in flat and "error" not in flat:
+        raise OAuthError(
+            "The pasted text is not the redirect URL. Copy the full address of "
+            "the page the browser was sent to after you approved the login."
+        )
+    return flat
 
 
 def refresh(site: str, client_id: str, refresh_token: str) -> Tokens:

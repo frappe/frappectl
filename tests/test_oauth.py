@@ -8,10 +8,12 @@ bypasses respx and reaches the real one-shot server.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 
 import httpx
 import pytest
@@ -147,6 +149,57 @@ def test_login_dcr_registers_and_exchanges(httpx2_mock):
     assert captured["code_challenge"]
     assert captured["response_type"] == "code"
     assert token_route.called
+
+
+def _drive_paste_login(make_line: Callable[[str], str]) -> oauth.Tokens:
+    """Run oauth.login with nothing on the loopback; paste a line instead.
+
+    ``make_line`` gets the authorize URL's ``state`` and returns what the user
+    pastes, as when the browser runs on another machine over SSH.
+    """
+    port = next(_next_port)
+    read_fd, write_fd = os.pipe()
+
+    def announce(url: str) -> None:
+        state = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["state"][0]
+        os.write(write_fd, make_line(state).encode())
+
+    with os.fdopen(read_fd) as paste:
+        try:
+            tokens, _ = oauth.login(
+                SITE,
+                client_id="fixed-pub",
+                port=port,
+                open_browser=False,
+                announce=announce,
+                timeout=10,
+                paste=paste,
+            )
+        finally:
+            os.close(write_fd)
+    return tokens
+
+
+def test_login_accepts_pasted_redirect_url(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(200, json=_metadata())
+    token_route = httpx2_mock.post(TOKEN).mock(return_value=_token_response())
+
+    tokens = _drive_paste_login(
+        lambda state: oauth.redirect_uri(9876)
+        + "?"
+        + urllib.parse.urlencode({"code": "PASTED", "state": state})
+        + "\n"
+    )
+
+    assert tokens.access_token == "AT"
+    assert "code=PASTED" in token_route.calls.last.request.content.decode()
+
+
+def test_login_rejects_pasted_text_that_is_not_a_redirect(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(200, json=_metadata())
+
+    with pytest.raises(oauth.OAuthError, match="not the redirect URL"):
+        _drive_paste_login(lambda state: "hello\n")
 
 
 @pytest.mark.httpx2(assert_all_called=False)

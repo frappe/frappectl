@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Optional
 
@@ -92,17 +93,18 @@ def login(
     2.0 authorization-code flow in your browser instead — no secret is ever
     stored, and tokens refresh automatically. --oauth skips the method prompt.
 
-    Both methods need a terminal (and OAuth needs a local browser). For headless
-    / agent use, set FRAPPE_SITE / FRAPPE_API_KEY / FRAPPE_API_SECRET in the
-    environment instead — those never touch the keyring.
+    Both methods need a terminal. OAuth also needs a browser; over SSH, open the
+    printed link on your own machine and paste the URL it redirects to back into
+    the terminal. For headless / agent use, set FRAPPE_SITE / FRAPPE_API_KEY /
+    FRAPPE_API_SECRET in the environment instead — those never touch the keyring.
     """
     # Refuse anything that isn't a real terminal so credentials can't be fed in
     # by pipe, heredoc or redirect (all of which end up in history or logs), and
-    # because the OAuth flow needs a browser on this machine.
+    # because the OAuth flow needs a person at the browser and the terminal.
     if not sys.stdin.isatty():
         raise fail(
             "auth login is interactive only and needs a terminal (OAuth also "
-            "needs a local browser). For headless / agent use set FRAPPE_SITE, "
+            "needs a browser). For headless / agent use set FRAPPE_SITE, "
             "FRAPPE_API_KEY and FRAPPE_API_SECRET in the environment instead.",
             2,
         )
@@ -179,11 +181,22 @@ def _login_oauth(
     # litter the site with new OAuth Client rows; an explicit --client-id wins.
     resolved_client_id = client_id or config.oauth_client_id(profile)
 
+    # select() can watch a terminal only on POSIX, so the paste fallback is
+    # offered there; elsewhere the loopback redirect is the only path.
+    paste = sys.stdin if os.name == "posix" else None
+
     def announce(url: str) -> None:
         err_console.print(
             "[dim]Opening your browser to authorize. If it does not open, "
             f"visit:[/dim]\n{url}"
         )
+        if paste:
+            err_console.print(
+                "\n[dim]If the browser is on another machine (over SSH), the page "
+                "it lands on after you approve will fail to load. Copy that "
+                "page's URL from the address bar, paste it here and press "
+                "Enter.[/dim]"
+            )
 
     try:
         tokens, used_client_id = oauth.login(
@@ -191,6 +204,7 @@ def _login_oauth(
             client_id=resolved_client_id,
             port=oauth_port,
             announce=announce,
+            paste=paste,
         )
     except oauth.OAuthError as e:
         raise fail(f"OAuth login against {norm_site} failed: {e}")
