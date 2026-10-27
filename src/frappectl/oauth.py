@@ -352,12 +352,16 @@ def _await_redirect(
                 # Read only what is available: readline() would block on a
                 # partial line (ended by Ctrl-D) and starve the loopback.
                 chunk = os.read(paste.fileno(), 4096)
-                if not chunk:
+                if chunk:
+                    pasted += chunk
+                    line, newline, _ = pasted.partition(b"\n")
+                    if newline:
+                        result = _parse_pasted_redirect(line.decode(errors="replace"))
+                elif pasted.strip():
+                    # EOF after text with no newline: parse what was pasted.
+                    result = _parse_pasted_redirect(pasted.decode(errors="replace"))
+                else:
                     paste = None  # EOF: keep waiting on the loopback alone.
-                pasted += chunk
-                if b"\n" in pasted:
-                    line = pasted.partition(b"\n")[0].decode(errors="replace")
-                    result = _parse_pasted_redirect(line)
     finally:
         server.server_close()
 
