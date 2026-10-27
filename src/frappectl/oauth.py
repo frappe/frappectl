@@ -198,8 +198,7 @@ class _CallbackHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        params = urllib.parse.parse_qs(parsed.query)
-        flat = {k: v[0] for k, v in params.items() if v}
+        flat = _redirect_params(parsed.query)
         server.result = flat
         ok = "code" in flat and "error" not in flat
         body = _result_page(ok, flat.get("error"))
@@ -335,8 +334,7 @@ def _await_redirect(
             "(the port must match a redirect URI registered on the site)."
         ) from e
 
-    server.result = None
-    server.timeout = _POLL_INTERVAL
+    result: dict[str, str] | None = None
     try:
         if announce:
             announce(authorize_url)
@@ -344,11 +342,12 @@ def _await_redirect(
             webbrowser.open(authorize_url)
         deadline = time.monotonic() + timeout
         pasted = b""
-        while server.result is None and time.monotonic() < deadline:
+        while result is None and time.monotonic() < deadline:
             sources: list[HTTPServer | TextIO] = [server, paste] if paste else [server]
             ready, _, _ = select.select(sources, [], [], _POLL_INTERVAL)
             if server in ready:
                 server.handle_request()
+                result = server.result
             elif paste and paste in ready:
                 # Read only what is available: readline() would block on a
                 # partial line (ended by Ctrl-D) and starve the loopback.
@@ -358,30 +357,34 @@ def _await_redirect(
                 pasted += chunk
                 if b"\n" in pasted:
                     line = pasted.partition(b"\n")[0].decode(errors="replace")
-                    server.result = _parse_pasted_redirect(line)
+                    result = _parse_pasted_redirect(line)
     finally:
         server.server_close()
 
-    if server.result is None:
+    if result is None:
         raise OAuthError(
             "Timed out waiting for the authorization redirect. Complete the login "
             "in the browser, or retry."
         )
-    return server.result
+    return result
 
 
 def _parse_pasted_redirect(text: str) -> dict[str, str]:
     """Read the redirect parameters from a pasted URL (or its bare query)."""
     text = text.strip()
-    query = urllib.parse.urlparse(text).query or text
-    params = urllib.parse.parse_qs(query)
-    flat = {k: v[0] for k, v in params.items() if v}
+    flat = _redirect_params(urllib.parse.urlparse(text).query or text)
     if "code" not in flat and "error" not in flat:
         raise OAuthError(
             "The pasted text is not the redirect URL. Copy the full address of "
             "the page the browser was sent to after you approved the login."
         )
     return flat
+
+
+def _redirect_params(query: str) -> dict[str, str]:
+    """The redirect's query parameters, first value of each."""
+    params = urllib.parse.parse_qs(query)
+    return {k: v[0] for k, v in params.items() if v}
 
 
 def refresh(site: str, client_id: str, refresh_token: str) -> Tokens:
