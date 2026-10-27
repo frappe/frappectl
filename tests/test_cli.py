@@ -2,7 +2,6 @@ import json
 
 import httpx
 import pytest
-import respx
 from typer.testing import CliRunner
 
 from frappectl.cli import _hoist_globals, app
@@ -40,9 +39,8 @@ def env(monkeypatch):
     monkeypatch.setenv("FRAPPE_API_SECRET", "s")
 
 
-@respx.mock
-def test_doc_get_json(env):
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_doc_get_json(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(200, json={"data": {"name": "X", "status": "Open"}})
     )
     result = runner.invoke(app, ["--json", "doc", "get", "ToDo", "X"])
@@ -50,9 +48,8 @@ def test_doc_get_json(env):
     assert json.loads(result.stdout) == {"name": "X", "status": "Open"}
 
 
-@respx.mock
-def test_doc_list_meta_driven_fields(env):
-    respx.get(f"{BASE}/api/v2/doctype/ToDo/meta").mock(
+def test_doc_list_meta_driven_fields(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/doctype/ToDo/meta").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -69,7 +66,7 @@ def test_doc_list_meta_driven_fields(env):
             },
         )
     )
-    list_route = respx.get(f"{BASE}/api/v2/document/ToDo").mock(
+    list_route = httpx2_mock.get(f"{BASE}/api/v2/document/ToDo").mock(
         return_value=httpx.Response(
             200, json={"data": [{"name": "a"}], "has_next_page": False}
         )
@@ -82,9 +79,8 @@ def test_doc_list_meta_driven_fields(env):
     assert list_route.calls.last.request.url.params["order_by"] == "creation desc"
 
 
-@respx.mock
-def test_delete_runs_without_confirmation(env):
-    route = respx.delete(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_delete_runs_without_confirmation(httpx2_mock, env):
+    route = httpx2_mock.delete(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(200, json={"data": {}})
     )
     result = runner.invoke(app, ["--json", "doc", "delete", "ToDo", "X"])
@@ -93,14 +89,13 @@ def test_delete_runs_without_confirmation(env):
     assert json.loads(result.stdout)["deleted"] == "X"
 
 
-@respx.mock
-def test_update_threads_modified(env):
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_update_threads_modified(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(
             200, json={"data": {"name": "X", "modified": "2026-01-01 00:00:00"}}
         )
     )
-    patch_route = respx.patch(f"{BASE}/api/v2/document/ToDo/X/").mock(
+    patch_route = httpx2_mock.patch(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(200, json={"data": {"name": "X"}})
     )
     result = runner.invoke(
@@ -114,9 +109,8 @@ def test_update_threads_modified(env):
     assert sent["status"] == "Closed"
 
 
-@respx.mock
-def test_update_force_skips_modified(env):
-    patch_route = respx.patch(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_update_force_skips_modified(httpx2_mock, env):
+    patch_route = httpx2_mock.patch(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(200, json={"data": {"name": "X"}})
     )
     result = runner.invoke(
@@ -130,14 +124,13 @@ def test_update_force_skips_modified(env):
     assert "modified" not in sent
 
 
-@respx.mock
-def test_conflict_message(env):
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_conflict_message(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(
             200, json={"data": {"name": "X", "modified": "2026-01-01 00:00:00"}}
         )
     )
-    respx.patch(f"{BASE}/api/v2/document/ToDo/X/").mock(
+    httpx2_mock.patch(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(
             409,
             json={
@@ -260,18 +253,17 @@ def test_login_writable_flag_overrides_read_only_default(monkeypatch):
     assert auth._choose_read_only(False) is False
 
 
-@respx.mock
-def test_get_logged_user_only_trusts_non_guest_data():
-    route = respx.get(f"{BASE}/api/v2/method/frappe.auth.get_logged_user")
+def test_get_logged_user_only_trusts_non_guest_data(httpx2_mock):
+    route = httpx2_mock.get(f"{BASE}/api/v2/method/frappe.auth.get_logged_user")
     with FrappeClient(BASE, "k:s") as client:
-        route.mock(return_value=httpx.Response(200, json={"data": "user@example.com"}))
+        route.respond(200, json={"data": "user@example.com"})
         assert client.get_logged_user() == "user@example.com"
 
-        route.mock(return_value=httpx.Response(200, json={"data": "Guest"}))
+        route.respond(200, json={"data": "Guest"})
         with pytest.raises(FrappeError):
             client.get_logged_user()
 
-        route.mock(return_value=httpx.Response(200, text="<html>login</html>"))
+        route.respond(200, text="<html>login</html>")
         with pytest.raises(FrappeError):
             client.get_logged_user()
 
@@ -318,9 +310,8 @@ def test_list_shows_description(fake_config):
     assert "prod erp" in result.stdout
 
 
-@respx.mock
-def test_error_includes_hint(env):
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_error_includes_hint(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(
             404,
             json={
@@ -335,9 +326,8 @@ def test_error_includes_hint(env):
     assert "frappectl doctype list" in result.stderr
 
 
-@respx.mock
-def test_server_exception_nudges_debug(env):
-    respx.get(f"{BASE}/api/v2/method/x.y").mock(
+def test_server_exception_nudges_debug(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/method/x.y").mock(
         return_value=httpx.Response(
             500,
             json={"errors": [{"exception": "Traceback...\nKeyError: 'z'"}]},
@@ -349,9 +339,8 @@ def test_server_exception_nudges_debug(env):
     assert "Traceback" not in result.stderr
 
 
-@respx.mock
-def test_no_debug_nudge_under_debug(env):
-    respx.get(f"{BASE}/api/v2/method/x.y").mock(
+def test_no_debug_nudge_under_debug(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/method/x.y").mock(
         return_value=httpx.Response(
             500,
             json={"errors": [{"exception": "Traceback...\nKeyError: 'z'"}]},
@@ -365,9 +354,8 @@ def test_no_debug_nudge_under_debug(env):
     assert "re-run with --debug" not in result.stderr
 
 
-@respx.mock
-def test_no_debug_nudge_for_plain_error(env):
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_no_debug_nudge_for_plain_error(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(
             404,
             json={
@@ -380,9 +368,8 @@ def test_no_debug_nudge_for_plain_error(env):
     assert "--debug" not in result.stderr
 
 
-@respx.mock
-def test_api_method_get(env):
-    respx.get(f"{BASE}/api/v2/method/frappe.client.get_count").mock(
+def test_api_method_get(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/method/frappe.client.get_count").mock(
         return_value=httpx.Response(200, json={"data": 5})
     )
     result = runner.invoke(
@@ -392,9 +379,8 @@ def test_api_method_get(env):
     assert result.stdout.strip() == "5"
 
 
-@respx.mock
-def test_api_get_structured_field_json_encodes_query(env):
-    route = respx.get(f"{BASE}/api/v2/method/frappe.client.get_list").mock(
+def test_api_get_structured_field_json_encodes_query(httpx2_mock, env):
+    route = httpx2_mock.get(f"{BASE}/api/v2/method/frappe.client.get_list").mock(
         return_value=httpx.Response(200, json={"data": []})
     )
     result = runner.invoke(
@@ -418,9 +404,8 @@ def test_api_get_structured_field_json_encodes_query(env):
     assert q["or_filters"] == '[["a", "=", "b"]]'
 
 
-@respx.mock
-def test_api_post_structured_field_native_json_body(env):
-    route = respx.post(f"{BASE}/api/v2/method/some.method").mock(
+def test_api_post_structured_field_native_json_body(httpx2_mock, env):
+    route = httpx2_mock.post(f"{BASE}/api/v2/method/some.method").mock(
         return_value=httpx.Response(200, json={"data": "ok"})
     )
     result = runner.invoke(
@@ -444,9 +429,8 @@ def test_api_post_structured_field_native_json_body(env):
     assert body == {"emails": ["a@example.com", "b@example.com"], "limit": 10}
 
 
-@respx.mock
-def test_api_get_with_input_sends_body_keys_as_query(env):
-    route = respx.get(f"{BASE}/api/v2/method/frappe.client.get_count").mock(
+def test_api_get_with_input_sends_body_keys_as_query(httpx2_mock, env):
+    route = httpx2_mock.get(f"{BASE}/api/v2/method/frappe.client.get_count").mock(
         return_value=httpx.Response(200, json={"data": 2})
     )
     result = runner.invoke(
@@ -461,8 +445,7 @@ def test_api_get_with_input_sends_body_keys_as_query(env):
     assert q["filters"] == '{"enabled": 1}'
 
 
-@respx.mock
-def test_api_get_with_non_object_input_errors(env):
+def test_api_get_with_non_object_input_errors(httpx2_mock, env):
     result = runner.invoke(
         app,
         ["api", "method/frappe.ping", "-X", "GET", "--input", "-"],
@@ -472,8 +455,7 @@ def test_api_get_with_non_object_input_errors(env):
     assert "must be a JSON object" in result.stderr
 
 
-@respx.mock
-def test_whoami_refreshes_expired_oauth_token(fake_config, monkeypatch):
+def test_whoami_refreshes_expired_oauth_token(httpx2_mock, fake_config, monkeypatch):
     import time
 
     from frappectl import oauth
@@ -490,7 +472,7 @@ def test_whoami_refreshes_expired_oauth_token(fake_config, monkeypatch):
         "refresh",
         lambda *a: oauth.Tokens("NEW", "RT2", new_expiry, "bearer"),
     )
-    route = respx.get(f"{BASE}/api/v2/method/frappe.auth.get_logged_user").mock(
+    route = httpx2_mock.get(f"{BASE}/api/v2/method/frappe.auth.get_logged_user").mock(
         return_value=httpx.Response(200, json={"data": "user@example.com"})
     )
 

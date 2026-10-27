@@ -2,7 +2,6 @@ import json
 
 import httpx
 import pytest
-import respx
 from typer.testing import CliRunner
 
 from frappectl import resources
@@ -30,9 +29,8 @@ def no_sleep(monkeypatch):
     monkeypatch.setattr(resources.time, "sleep", lambda _s: None)
 
 
-@respx.mock
-def test_discovery_search_hits_singular_endpoint():
-    route = respx.get(f"{BASE}/api/v2/discovery/search").mock(
+def test_discovery_search_hits_singular_endpoint(httpx2_mock):
+    route = httpx2_mock.get(f"{BASE}/api/v2/discovery/search").mock(
         return_value=httpx.Response(
             200, json={"data": {"query": "abc", "results": [{"path": "x"}]}}
         )
@@ -42,9 +40,8 @@ def test_discovery_search_hits_singular_endpoint():
     assert route.calls.last.request.url.params["q"] == "abc"
 
 
-@respx.mock
-def test_discovery_list_uses_singular_method_route():
-    respx.get(f"{BASE}/api/v2/discovery/method").mock(
+def test_discovery_list_uses_singular_method_route(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/method").mock(
         return_value=httpx.Response(
             200, json={"data": {"type": "method_index", "methods": []}}
         )
@@ -52,9 +49,8 @@ def test_discovery_list_uses_singular_method_route():
     assert _client().discovery_list()["type"] == "method_index"
 
 
-@respx.mock
-def test_discovery_retries_503_then_succeeds():
-    route = respx.get(f"{BASE}/api/v2/discovery/method").mock(
+def test_discovery_retries_503_then_succeeds(httpx2_mock):
+    route = httpx2_mock.get(f"{BASE}/api/v2/discovery/method").mock(
         side_effect=[
             httpx.Response(503, headers={"Retry-After": "0"}),
             httpx.Response(200, json={"data": {"methods": []}}),
@@ -64,9 +60,8 @@ def test_discovery_retries_503_then_succeeds():
     assert route.call_count == 2
 
 
-@respx.mock
-def test_discovery_gives_up_after_max_retries():
-    respx.get(f"{BASE}/api/v2/discovery/method").mock(
+def test_discovery_gives_up_after_max_retries(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/method").mock(
         return_value=httpx.Response(503, headers={"Retry-After": "0"})
     )
     with pytest.raises(FrappeError) as ei:
@@ -74,15 +69,13 @@ def test_discovery_gives_up_after_max_retries():
     assert ei.value.status_code == 503
 
 
-@respx.mock
-def test_discovery_supported_false_on_404():
-    respx.get(f"{BASE}/api/v2/discovery").mock(return_value=httpx.Response(404))
+def test_discovery_supported_false_on_404(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/discovery").respond(404)
     assert _client().discovery_supported() is False
 
 
-@respx.mock
-def test_method_search_json_is_raw(env):
-    respx.get(f"{BASE}/api/v2/discovery/search").mock(
+def test_method_search_json_is_raw(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/search").mock(
         return_value=httpx.Response(
             200,
             json={"data": {"query": "abc", "results": [{"path": "frappe.ping"}]}},
@@ -94,20 +87,18 @@ def test_method_search_json_is_raw(env):
     assert "frappe.ping" in result.stdout
 
 
-@respx.mock
-def test_method_list_404_reports_unavailable(env):
-    respx.get(f"{BASE}/api/v2/discovery/method").mock(return_value=httpx.Response(404))
+def test_method_list_404_reports_unavailable(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/method").respond(404)
     result = runner.invoke(app, ["--json", "method", "list"])
     assert result.exit_code == 1
     assert "not available on this site" in result.stderr
 
 
-@respx.mock
-def test_method_show_404_but_discovery_supported(env):
-    respx.get(f"{BASE}/api/v2/discovery/method/frappe.nope").mock(
+def test_method_show_404_but_discovery_supported(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/method/frappe.nope").mock(
         return_value=httpx.Response(404)
     )
-    respx.get(f"{BASE}/api/v2/discovery").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/discovery").mock(
         return_value=httpx.Response(200, json={"data": {"type": "discovery"}})
     )
     result = runner.invoke(app, ["--json", "method", "show", "frappe.nope"])
@@ -115,12 +106,11 @@ def test_method_show_404_but_discovery_supported(env):
     assert "not found or not visible" in result.stderr
 
 
-@respx.mock
-def test_method_show_404_when_discovery_absent(env):
-    respx.get(f"{BASE}/api/v2/discovery/method/frappe.nope").mock(
+def test_method_show_404_when_discovery_absent(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/method/frappe.nope").mock(
         return_value=httpx.Response(404)
     )
-    respx.get(f"{BASE}/api/v2/discovery").mock(return_value=httpx.Response(404))
+    httpx2_mock.get(f"{BASE}/api/v2/discovery").respond(404)
     result = runner.invoke(app, ["--json", "method", "show", "frappe.nope"])
     assert result.exit_code == 1
     assert "not available on this site" in result.stderr
@@ -141,10 +131,9 @@ def _show_response(source=None):
     return httpx.Response(200, json={"data": data})
 
 
-@respx.mock
-def test_method_show_json_includes_source_when_present(env):
+def test_method_show_json_includes_source_when_present(httpx2_mock, env):
     src = "def ping():\n    return 'pong'\n"
-    respx.get(f"{BASE}/api/v2/discovery/method/frappe.ping").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/method/frappe.ping").mock(
         return_value=_show_response(source=src)
     )
     result = runner.invoke(app, ["--json", "method", "show", "frappe.ping"])
@@ -171,10 +160,9 @@ def _force_human_output(monkeypatch):
     monkeypatch.setattr(cli_mod, "Ctx", make_ctx)
 
 
-@respx.mock
-def test_method_show_renders_source_on_tty(env, monkeypatch):
+def test_method_show_renders_source_on_tty(httpx2_mock, env, monkeypatch):
     _force_human_output(monkeypatch)
-    respx.get(f"{BASE}/api/v2/discovery/method/frappe.ping").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/method/frappe.ping").mock(
         return_value=_show_response(source="def ping():\n    return 'pong'\n")
     )
     result = runner.invoke(app, ["method", "show", "frappe.ping"])
@@ -183,10 +171,9 @@ def test_method_show_renders_source_on_tty(env, monkeypatch):
     assert "def ping" in result.output
 
 
-@respx.mock
-def test_method_show_omits_source_section_when_absent(env, monkeypatch):
+def test_method_show_omits_source_section_when_absent(httpx2_mock, env, monkeypatch):
     _force_human_output(monkeypatch)
-    respx.get(f"{BASE}/api/v2/discovery/method/frappe.ping").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/method/frappe.ping").mock(
         return_value=_show_response(source=None)
     )
     result = runner.invoke(app, ["method", "show", "frappe.ping"])
@@ -194,10 +181,9 @@ def test_method_show_omits_source_section_when_absent(env, monkeypatch):
     assert "Source" not in result.output
 
 
-@respx.mock
-def test_method_list_renders_both_kinds_human(env, monkeypatch):
+def test_method_list_renders_both_kinds_human(httpx2_mock, env, monkeypatch):
     _force_human_output(monkeypatch)
-    respx.get(f"{BASE}/api/v2/discovery/method").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/method").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -225,10 +211,9 @@ def test_method_list_renders_both_kinds_human(env, monkeypatch):
     assert "User.populate_role_profile_roles" in result.output
 
 
-@respx.mock
-def test_method_search_renders_doctype_kind(env, monkeypatch):
+def test_method_search_renders_doctype_kind(httpx2_mock, env, monkeypatch):
     _force_human_output(monkeypatch)
-    respx.get(f"{BASE}/api/v2/discovery/search").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/search").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -253,9 +238,8 @@ def test_method_search_renders_doctype_kind(env, monkeypatch):
     assert "User.populate_role_profile_roles" in result.output
 
 
-@respx.mock
-def test_method_list_doctype_hits_scoped_endpoint(env):
-    route = respx.get(f"{BASE}/api/v2/discovery/doctype/User").mock(
+def test_method_list_doctype_hits_scoped_endpoint(httpx2_mock, env):
+    route = httpx2_mock.get(f"{BASE}/api/v2/discovery/doctype/User").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -275,9 +259,8 @@ def test_method_list_doctype_hits_scoped_endpoint(env):
     assert "add_comment" in result.stdout
 
 
-@respx.mock
-def test_method_list_doctype_url_encodes_name(env):
-    route = respx.get(f"{BASE}/api/v2/discovery/doctype/Sales%20Invoice").mock(
+def test_method_list_doctype_url_encodes_name(httpx2_mock, env):
+    route = httpx2_mock.get(f"{BASE}/api/v2/discovery/doctype/Sales%20Invoice").mock(
         return_value=httpx.Response(
             200, json={"data": {"type": "method_index", "methods": []}}
         )
@@ -289,12 +272,11 @@ def test_method_list_doctype_url_encodes_name(env):
     assert route.called
 
 
-@respx.mock
-def test_method_list_doctype_404_when_supported_reports_unknown(env):
-    respx.get(f"{BASE}/api/v2/discovery/doctype/Nope").mock(
+def test_method_list_doctype_404_when_supported_reports_unknown(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/doctype/Nope").mock(
         return_value=httpx.Response(404)
     )
-    respx.get(f"{BASE}/api/v2/discovery").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/discovery").mock(
         return_value=httpx.Response(200, json={"data": {"type": "discovery"}})
     )
     result = runner.invoke(app, ["--json", "method", "list", "--doctype", "Nope"])
@@ -302,9 +284,8 @@ def test_method_list_doctype_404_when_supported_reports_unknown(env):
     assert "not found or has no discoverable methods" in result.stderr
 
 
-@respx.mock
-def test_method_show_doctype_detail_json(env):
-    respx.get(f"{BASE}/api/v2/discovery/doctype/User/method/add_comment").mock(
+def test_method_show_doctype_detail_json(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/doctype/User/method/add_comment").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -329,10 +310,11 @@ def test_method_show_doctype_detail_json(env):
     assert "frappe.model.document.Document" in result.stdout
 
 
-@respx.mock
-def test_method_show_doctype_detail_human_shows_defined_in(env, monkeypatch):
+def test_method_show_doctype_detail_human_shows_defined_in(
+    httpx2_mock, env, monkeypatch
+):
     _force_human_output(monkeypatch)
-    respx.get(f"{BASE}/api/v2/discovery/doctype/User/method/add_comment").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/doctype/User/method/add_comment").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -356,11 +338,10 @@ def test_method_show_doctype_detail_human_shows_defined_in(env, monkeypatch):
     assert "comment_type" in result.output
 
 
-@respx.mock
-def test_method_call_picks_post_and_invokes_document_endpoint(env):
-    invoke = respx.post(
+def test_method_call_picks_post_and_invokes_document_endpoint(httpx2_mock, env):
+    invoke = httpx2_mock.post(
         f"{BASE}/api/v2/document/User/Administrator/method/add_comment"
-    ).mock(return_value=httpx.Response(200, json={"data": {"name": "c1"}}))
+    ).respond(200, json={"data": {"name": "c1"}})
     result = runner.invoke(
         app,
         [
@@ -383,14 +364,14 @@ def test_method_call_picks_post_and_invokes_document_endpoint(env):
     assert _json.loads(invoke.calls.last.request.content)["comment_type"] == "Comment"
 
 
-@respx.mock
-def test_method_call_explicit_get_skips_detail_fetch(env):
-    detail = respx.get(
+@pytest.mark.httpx2(assert_all_called=False)
+def test_method_call_explicit_get_skips_detail_fetch(httpx2_mock, env):
+    detail = httpx2_mock.get(
         f"{BASE}/api/v2/discovery/doctype/User/method/get_something"
-    ).mock(return_value=httpx.Response(200, json={"data": {}}))
-    invoke = respx.get(
+    ).respond(200, json={"data": {}})
+    invoke = httpx2_mock.get(
         f"{BASE}/api/v2/document/User/Administrator/method/get_something"
-    ).mock(return_value=httpx.Response(200, json={"data": {"ok": 1}}))
+    ).respond(200, json={"data": {"ok": 1}})
     result = runner.invoke(
         app,
         [
@@ -411,11 +392,10 @@ def test_method_call_explicit_get_skips_detail_fetch(env):
     assert not detail.called
 
 
-@respx.mock
-def test_method_call_url_encodes_document_name(env):
-    invoke = respx.post(
+def test_method_call_url_encodes_document_name(httpx2_mock, env):
+    invoke = httpx2_mock.post(
         f"{BASE}/api/v2/document/User/a%2Fb%40x/method/add_comment"
-    ).mock(return_value=httpx.Response(200, json={"data": {}}))
+    ).respond(200, json={"data": {}})
     result = runner.invoke(
         app,
         [
@@ -435,11 +415,10 @@ def test_method_call_url_encodes_document_name(env):
     assert invoke.called
 
 
-@respx.mock
-def test_method_call_rpc_defaults_to_post(env):
-    invoke = respx.post(f"{BASE}/api/v2/method/gameplan.api.get_unread_count").mock(
-        return_value=httpx.Response(200, json={"data": {"count": 3}})
-    )
+def test_method_call_rpc_defaults_to_post(httpx2_mock, env):
+    invoke = httpx2_mock.post(
+        f"{BASE}/api/v2/method/gameplan.api.get_unread_count"
+    ).mock(return_value=httpx.Response(200, json={"data": {"count": 3}}))
     result = runner.invoke(
         app,
         [
@@ -458,12 +437,12 @@ def test_method_call_rpc_defaults_to_post(env):
     assert _json.loads(invoke.calls.last.request.content)["project"] == 1
 
 
-@respx.mock
-def test_method_call_rpc_explicit_get_hits_method_endpoint(env):
-    detail = respx.get(f"{BASE}/api/v2/discovery/method/frappe.ping").mock(
+@pytest.mark.httpx2(assert_all_called=False)
+def test_method_call_rpc_explicit_get_hits_method_endpoint(httpx2_mock, env):
+    detail = httpx2_mock.get(f"{BASE}/api/v2/discovery/method/frappe.ping").mock(
         return_value=httpx.Response(200, json={"data": {}})
     )
-    invoke = respx.get(f"{BASE}/api/v2/method/frappe.ping").mock(
+    invoke = httpx2_mock.get(f"{BASE}/api/v2/method/frappe.ping").mock(
         return_value=httpx.Response(200, json={"data": "pong"})
     )
     result = runner.invoke(
@@ -474,13 +453,12 @@ def test_method_call_rpc_explicit_get_hits_method_endpoint(env):
     assert not detail.called
 
 
-@respx.mock
-def test_method_call_read_only_defaults_to_get(monkeypatch):
+def test_method_call_read_only_defaults_to_get(httpx2_mock, monkeypatch):
     monkeypatch.setenv("FRAPPE_SITE", BASE)
     monkeypatch.setenv("FRAPPE_API_KEY", "k")
     monkeypatch.setenv("FRAPPE_API_SECRET", "s")
     monkeypatch.setenv("FRAPPE_READ_ONLY", "1")
-    invoke = respx.get(f"{BASE}/api/v2/method/frappe.client.get_count").mock(
+    invoke = httpx2_mock.get(f"{BASE}/api/v2/method/frappe.client.get_count").mock(
         return_value=httpx.Response(200, json={"data": 3})
     )
     result = runner.invoke(
@@ -491,8 +469,7 @@ def test_method_call_read_only_defaults_to_get(monkeypatch):
     assert invoke.called
 
 
-@respx.mock
-def test_method_call_rejects_doctype_without_name(env):
+def test_method_call_rejects_doctype_without_name(httpx2_mock, env):
     result = runner.invoke(
         app, ["--json", "method", "call", "add_comment", "--doctype", "User"]
     )
@@ -500,8 +477,7 @@ def test_method_call_rejects_doctype_without_name(env):
     assert "--name is required" in result.stderr
 
 
-@respx.mock
-def test_method_call_rejects_name_without_doctype(env):
+def test_method_call_rejects_name_without_doctype(httpx2_mock, env):
     result = runner.invoke(
         app, ["--json", "method", "call", "add_comment", "--name", "Administrator"]
     )
@@ -509,9 +485,8 @@ def test_method_call_rejects_name_without_doctype(env):
     assert "only valid together with --doctype" in result.stderr
 
 
-@respx.mock
-def test_method_show_json_preserved_after_503_retry(env):
-    respx.get(f"{BASE}/api/v2/discovery/method/frappe.ping").mock(
+def test_method_show_json_preserved_after_503_retry(httpx2_mock, env):
+    httpx2_mock.get(f"{BASE}/api/v2/discovery/method/frappe.ping").mock(
         side_effect=[
             httpx.Response(503, headers={"Retry-After": "0"}),
             httpx.Response(

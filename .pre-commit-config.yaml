@@ -33,7 +33,7 @@ repos:
         name: "Run ruff formatter"
 
   # mypy runs through uv so it resolves against the locked project + typed deps
-  # (typer, httpx, rich…). An isolated pre-commit env wouldn't see them and would
+  # (typer, httpx2, rich…). An isolated pre-commit env wouldn't see them and would
   # drown in false import errors. It reads its config (strict, files = ["src"])
   # from pyproject.toml, so it types the whole package regardless of staged files.
   - repo: local

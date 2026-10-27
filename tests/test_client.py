@@ -2,7 +2,6 @@ import json
 
 import httpx
 import pytest
-import respx
 
 from frappectl.client import FrappeClient
 from frappectl.errors import FrappeError
@@ -14,9 +13,8 @@ def client():
     return FrappeClient(BASE, "k:s")
 
 
-@respx.mock
-def test_list_documents():
-    respx.get(f"{BASE}/api/v2/document/ToDo").mock(
+def test_list_documents(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo").mock(
         return_value=httpx.Response(
             200, json={"data": [{"name": "a"}, {"name": "b"}], "has_next_page": True}
         )
@@ -26,17 +24,15 @@ def test_list_documents():
     assert has_next is True
 
 
-@respx.mock
-def test_get_document_unwraps_data():
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_get_document_unwraps_data(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(200, json={"data": {"name": "X", "status": "Open"}})
     )
     assert client().get_document("ToDo", "X") == {"name": "X", "status": "Open"}
 
 
-@respx.mock
-def test_create_document():
-    route = respx.post(f"{BASE}/api/v2/document/ToDo").mock(
+def test_create_document(httpx2_mock):
+    route = httpx2_mock.post(f"{BASE}/api/v2/document/ToDo").mock(
         return_value=httpx.Response(200, json={"data": {"name": "new1"}})
     )
     out = client().create_document("ToDo", {"description": "hi"})
@@ -44,9 +40,8 @@ def test_create_document():
     assert route.calls.last.request.content
 
 
-@respx.mock
-def test_error_extracted_and_raised():
-    respx.get(f"{BASE}/api/v2/document/ToDo/Z/").mock(
+def test_error_extracted_and_raised(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/Z/").mock(
         return_value=httpx.Response(
             404, json={"errors": [{"message": "ToDo Z not found"}]}
         )
@@ -57,9 +52,8 @@ def test_error_extracted_and_raised():
     assert ei.value.status_code == 404
 
 
-@respx.mock
-def test_401_message():
-    respx.get(f"{BASE}/api/v2/document/ToDo/Z/").mock(
+def test_401_message(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/Z/").mock(
         return_value=httpx.Response(401, json={"errors": [{"message": "nope"}]})
     )
     with pytest.raises(FrappeError) as ei:
@@ -68,9 +62,8 @@ def test_401_message():
     assert "Authentication failed" in ei.value.message
 
 
-@respx.mock
-def test_call_method_get():
-    respx.get(f"{BASE}/api/v2/method/frappe.client.get_count").mock(
+def test_call_method_get(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/method/frappe.client.get_count").mock(
         return_value=httpx.Response(200, json={"data": 42})
     )
     assert (
@@ -81,27 +74,25 @@ def test_call_method_get():
     )
 
 
-@respx.mock
-def test_redirect_is_followed():
-    respx.get(f"{BASE}/api/v2/document/ToDo/X").mock(
+def test_redirect_is_followed(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X").mock(
         return_value=httpx.Response(
             301, headers={"location": f"{BASE}/api/v2/document/ToDo/X/"}
         )
     )
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(200, json={"data": {"name": "X"}})
     )
     assert client().request("GET", "/api/v2/document/ToDo/X") == {"name": "X"}
 
 
-@respx.mock
-def test_post_redirect_replays_body_on_308():
-    respx.post(f"{BASE}/api/v2/document/ToDo").mock(
+def test_post_redirect_replays_body_on_308(httpx2_mock):
+    httpx2_mock.post(f"{BASE}/api/v2/document/ToDo").mock(
         return_value=httpx.Response(
             308, headers={"location": f"{BASE}/api/v2/document/ToDo/"}
         )
     )
-    landing = respx.post(f"{BASE}/api/v2/document/ToDo/").mock(
+    landing = httpx2_mock.post(f"{BASE}/api/v2/document/ToDo/").mock(
         return_value=httpx.Response(200, json={"data": {"name": "new1"}})
     )
     out = client().create_document("ToDo", {"description": "hi"})
@@ -109,12 +100,11 @@ def test_post_redirect_replays_body_on_308():
     assert landing.calls.last.request.content
 
 
-@respx.mock
-def test_stream_download_follows_redirects_and_chunks():
-    respx.get(f"{BASE}/private/files/x.bin").mock(
+def test_stream_download_follows_redirects_and_chunks(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/private/files/x.bin").mock(
         return_value=httpx.Response(302, headers={"location": f"{BASE}/cdn/x.bin"})
     )
-    respx.get(f"{BASE}/cdn/x.bin").mock(
+    httpx2_mock.get(f"{BASE}/cdn/x.bin").mock(
         return_value=httpx.Response(200, content=b"payload")
     )
     chunks: list[bytes] = []
@@ -123,9 +113,8 @@ def test_stream_download_follows_redirects_and_chunks():
     assert total == len(b"payload")
 
 
-@respx.mock
-def test_stream_download_raises_on_error():
-    respx.get(f"{BASE}/private/files/missing.bin").mock(
+def test_stream_download_raises_on_error(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/private/files/missing.bin").mock(
         return_value=httpx.Response(404, json={"errors": [{"message": "gone"}]})
     )
     with pytest.raises(FrappeError) as ei:
@@ -133,30 +122,27 @@ def test_stream_download_raises_on_error():
     assert ei.value.status_code == 404
 
 
-@respx.mock
-def test_count():
-    respx.get(f"{BASE}/api/v2/doctype/ToDo/count").mock(
+def test_count(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/doctype/ToDo/count").mock(
         return_value=httpx.Response(200, json={"data": 7})
     )
     assert client().get_count("ToDo") == 7
 
 
-@respx.mock
-def test_cross_host_redirect_does_not_forward_credential():
+def test_cross_host_redirect_does_not_forward_credential(httpx2_mock):
     evil = "https://evil.test"
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(302, headers={"Location": f"{evil}/steal"})
     )
-    landing = respx.get(f"{evil}/steal").mock(
+    landing = httpx2_mock.get(f"{evil}/steal").mock(
         return_value=httpx.Response(200, json={"data": {"name": "X"}})
     )
     client().get_document("ToDo", "X")
     assert "authorization" not in landing.calls.last.request.headers
 
 
-@respx.mock
-def test_debug_requests_sql_and_emits_server_debug(capsys):
-    route = respx.get(f"{BASE}/api/v2/document/ToDo").mock(
+def test_debug_requests_sql_and_emits_server_debug(httpx2_mock, capsys):
+    route = httpx2_mock.get(f"{BASE}/api/v2/document/ToDo").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -177,9 +163,10 @@ def test_debug_requests_sql_and_emits_server_debug(capsys):
     assert "[server] SELECT `name` FROM `tabToDo` LIMIT 1" in err
 
 
-@respx.mock
-def test_debug_emits_server_traceback_on_error(capsys):
-    respx.get(f"{BASE}/api/v2/method/suite.mail.api.mail.get_all_inbox_threads").mock(
+def test_debug_emits_server_traceback_on_error(httpx2_mock, capsys):
+    httpx2_mock.get(
+        f"{BASE}/api/v2/method/suite.mail.api.mail.get_all_inbox_threads"
+    ).mock(
         return_value=httpx.Response(
             500,
             json={
@@ -208,9 +195,8 @@ def test_debug_emits_server_traceback_on_error(capsys):
     assert "KeyError: 'thread_id'" in err
 
 
-@respx.mock
-def test_no_server_traceback_without_debug(capsys):
-    respx.get(f"{BASE}/api/v2/method/x.y").mock(
+def test_no_server_traceback_without_debug(httpx2_mock, capsys):
+    httpx2_mock.get(f"{BASE}/api/v2/method/x.y").mock(
         return_value=httpx.Response(
             500,
             json={"errors": [{"exception": "Traceback...\nKeyError: 'z'"}]},
@@ -223,9 +209,8 @@ def test_no_server_traceback_without_debug(capsys):
     assert excinfo.value.has_server_exception is True
 
 
-@respx.mock
-def test_server_exception_not_flagged_under_debug():
-    respx.get(f"{BASE}/api/v2/method/x.y").mock(
+def test_server_exception_not_flagged_under_debug(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/method/x.y").mock(
         return_value=httpx.Response(
             500,
             json={"errors": [{"exception": "Traceback...\nKeyError: 'z'"}]},
@@ -236,9 +221,8 @@ def test_server_exception_not_flagged_under_debug():
     assert excinfo.value.has_server_exception is False
 
 
-@respx.mock
-def test_error_without_traceback_not_flagged():
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_error_without_traceback_not_flagged(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(
             404,
             json={
@@ -251,9 +235,8 @@ def test_error_without_traceback_not_flagged():
     assert excinfo.value.has_server_exception is False
 
 
-@respx.mock
-def test_no_debug_param_or_output_by_default(capsys):
-    route = respx.get(f"{BASE}/api/v2/document/ToDo").mock(
+def test_no_debug_param_or_output_by_default(httpx2_mock, capsys):
+    route = httpx2_mock.get(f"{BASE}/api/v2/document/ToDo").mock(
         return_value=httpx.Response(200, json={"data": [], "has_next_page": False})
     )
     client().list_documents("ToDo", fields=["name"])
@@ -276,9 +259,8 @@ def ro_client():
     return FrappeClient(BASE, "k:s", read_only=True)
 
 
-@respx.mock
-def test_read_only_allows_get():
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_read_only_allows_get(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(200, json={"data": {"name": "X"}})
     )
     assert ro_client().get_document("ToDo", "X") == {"name": "X"}
@@ -294,37 +276,34 @@ def test_read_only_allows_get():
         lambda c: c.call_method("frappe.client.set_value", params={"a": 1}),
     ],
 )
-@respx.mock
-def test_read_only_refuses_writes(call):
+@pytest.mark.httpx2(assert_all_called=False)
+def test_read_only_refuses_writes(httpx2_mock, call):
     # A catch-all route ensures the guard, not the network, is what stops us:
     # if any request escaped it would 500 here rather than raise our message.
-    respx.route().mock(return_value=httpx.Response(500))
+    httpx2_mock.route().respond(500)
     with pytest.raises(FrappeError) as ei:
         call(ro_client())
     assert "read-only" in ei.value.message.lower()
 
 
-@respx.mock
-def test_read_only_get_method_call_allowed():
-    route = respx.get(f"{BASE}/api/v2/method/frappe.client.get_count").mock(
+def test_read_only_get_method_call_allowed(httpx2_mock):
+    route = httpx2_mock.get(f"{BASE}/api/v2/method/frappe.client.get_count").mock(
         return_value=httpx.Response(200, json={"data": 3})
     )
     assert ro_client().call_method("frappe.client.get_count", http_method="GET") == 3
     assert route.called
 
 
-@respx.mock
-def test_bearer_header_is_sent():
-    route = respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_bearer_header_is_sent(httpx2_mock):
+    route = httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(200, json={"data": {"name": "X"}})
     )
     FrappeClient(BASE, "ACCESS", token_type="bearer").get_document("ToDo", "X")
     assert route.calls.last.request.headers["authorization"] == "Bearer ACCESS"
 
 
-@respx.mock
-def test_401_triggers_one_refresh_and_replays():
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_401_triggers_one_refresh_and_replays(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         side_effect=[
             httpx.Response(401, json={"errors": [{"message": "expired"}]}),
             httpx.Response(200, json={"data": {"name": "X"}}),
@@ -341,13 +320,12 @@ def test_401_triggers_one_refresh_and_replays():
     )
     assert client.get_document("ToDo", "X") == {"name": "X"}
     assert calls["n"] == 1
-    route = respx.get(f"{BASE}/api/v2/document/ToDo/X/")
+    route = httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/")
     assert route.calls[-1].request.headers["authorization"] == "Bearer ACCESS2"
 
 
-@respx.mock
-def test_401_surfaces_when_refresh_fails():
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_401_surfaces_when_refresh_fails(httpx2_mock):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(401, json={"errors": [{"message": "nope"}]})
     )
 
@@ -362,9 +340,8 @@ def test_401_surfaces_when_refresh_fails():
     assert ei.value.status_code == 401
 
 
-@respx.mock
-def test_no_refresh_callback_does_not_retry():
-    route = respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_no_refresh_callback_does_not_retry(httpx2_mock):
+    route = httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(401, json={"errors": [{"message": "nope"}]})
     )
     with pytest.raises(FrappeError):
@@ -372,9 +349,8 @@ def test_no_refresh_callback_does_not_retry():
     assert len(route.calls) == 1
 
 
-@respx.mock
-def test_debug_redacts_bearer_scheme(capsys):
-    respx.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
+def test_debug_redacts_bearer_scheme(httpx2_mock, capsys):
+    httpx2_mock.get(f"{BASE}/api/v2/document/ToDo/X/").mock(
         return_value=httpx.Response(200, json={"data": {"name": "X"}})
     )
     FrappeClient(BASE, "ACCESS", token_type="bearer", debug=True).get_document(
@@ -385,9 +361,10 @@ def test_debug_redacts_bearer_scheme(capsys):
     assert "ACCESS" not in err
 
 
-@respx.mock
-def test_list_doctypes_uses_link_search():
-    route = respx.get(f"{BASE}/api/v2/method/frappe.desk.search.search_link").mock(
+def test_list_doctypes_uses_link_search(httpx2_mock):
+    route = httpx2_mock.get(
+        f"{BASE}/api/v2/method/frappe.desk.search.search_link"
+    ).mock(
         return_value=httpx.Response(
             200,
             json={

@@ -2,7 +2,7 @@
 
 The browser leg is driven by posting the authorization code straight to the
 loopback server (no real browser), exactly as the plan describes. respx mocks
-the httpx-backed server calls; the loopback callback is hit with urllib so it
+the httpx2-backed server calls; the loopback callback is hit with urllib so it
 bypasses respx and reaches the real one-shot server.
 """
 
@@ -15,7 +15,6 @@ import urllib.request
 
 import httpx
 import pytest
-import respx
 
 from frappectl import oauth
 
@@ -87,27 +86,24 @@ def _drive_login(**login_kwargs: object) -> tuple[oauth.Tokens, str, dict[str, s
     return tokens, client_id, captured
 
 
-@respx.mock
-def test_discover_reads_metadata():
-    respx.get(WELL_KNOWN).mock(return_value=httpx.Response(200, json=_metadata()))
+def test_discover_reads_metadata(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(200, json=_metadata())
     meta = oauth.discover(SITE)
     assert meta.authorization_endpoint == AUTHORIZE
     assert meta.token_endpoint == TOKEN
     assert meta.registration_endpoint == REGISTER
 
 
-@respx.mock
-def test_discover_falls_back_on_404():
-    respx.get(WELL_KNOWN).mock(return_value=httpx.Response(404))
+def test_discover_falls_back_on_404(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(404)
     meta = oauth.discover(SITE)
     assert meta.token_endpoint.endswith("frappe.integrations.oauth2.get_token")
     assert meta.authorization_endpoint.endswith("frappe.integrations.oauth2.authorize")
     assert meta.registration_endpoint == ""
 
 
-@respx.mock
-def test_discover_raises_on_server_error():
-    respx.get(WELL_KNOWN).mock(return_value=httpx.Response(500))
+def test_discover_raises_on_server_error(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(500)
     with pytest.raises(oauth.OAuthError):
         oauth.discover(SITE)
 
@@ -117,10 +113,9 @@ def test_refuses_oauth_over_plain_http_remote():
         oauth.discover("http://erp.example.com")
 
 
-@respx.mock
-def test_allows_plain_http_on_localhost():
+def test_allows_plain_http_on_localhost(httpx2_mock):
     well_known = "http://dev.localhost:8000/.well-known/oauth-authorization-server"
-    respx.get(well_known).mock(
+    httpx2_mock.get(well_known).mock(
         return_value=httpx.Response(
             200,
             json={
@@ -133,13 +128,12 @@ def test_allows_plain_http_on_localhost():
     assert meta.token_endpoint == "http://dev.localhost:8000/token"
 
 
-@respx.mock
-def test_login_dcr_registers_and_exchanges():
-    respx.get(WELL_KNOWN).mock(return_value=httpx.Response(200, json=_metadata()))
-    reg = respx.post(REGISTER).mock(
+def test_login_dcr_registers_and_exchanges(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(200, json=_metadata())
+    reg = httpx2_mock.post(REGISTER).mock(
         return_value=httpx.Response(200, json={"client_id": "dcr-client"})
     )
-    token_route = respx.post(TOKEN).mock(return_value=_token_response())
+    token_route = httpx2_mock.post(TOKEN).mock(return_value=_token_response())
 
     tokens, client_id, captured = _drive_login()
 
@@ -155,13 +149,13 @@ def test_login_dcr_registers_and_exchanges():
     assert token_route.called
 
 
-@respx.mock
-def test_login_uses_configured_client_without_dcr():
-    respx.get(WELL_KNOWN).mock(
+@pytest.mark.httpx2(assert_all_called=False)
+def test_login_uses_configured_client_without_dcr(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).mock(
         return_value=httpx.Response(200, json=_metadata(with_registration=False))
     )
-    reg = respx.post(REGISTER).mock(return_value=httpx.Response(200))
-    respx.post(TOKEN).mock(return_value=_token_response())
+    reg = httpx2_mock.post(REGISTER).respond(200)
+    httpx2_mock.post(TOKEN).mock(return_value=_token_response())
 
     tokens, client_id, _ = _drive_login(client_id="fixed-pub")
 
@@ -170,22 +164,20 @@ def test_login_uses_configured_client_without_dcr():
     assert not reg.called
 
 
-@respx.mock
-def test_login_without_client_or_dcr_errors():
-    respx.get(WELL_KNOWN).mock(
+def test_login_without_client_or_dcr_errors(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).mock(
         return_value=httpx.Response(200, json=_metadata(with_registration=False))
     )
     with pytest.raises(oauth.OAuthError, match="dynamic client registration"):
         oauth.login(SITE, port=next(_next_port), open_browser=False, timeout=5)
 
 
-@respx.mock
-def test_login_surfaces_token_error():
-    respx.get(WELL_KNOWN).mock(return_value=httpx.Response(200, json=_metadata()))
-    respx.post(REGISTER).mock(
+def test_login_surfaces_token_error(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(200, json=_metadata())
+    httpx2_mock.post(REGISTER).mock(
         return_value=httpx.Response(200, json={"client_id": "dcr-client"})
     )
-    respx.post(TOKEN).mock(
+    httpx2_mock.post(TOKEN).mock(
         return_value=httpx.Response(
             400, json={"error": "invalid_grant", "error_description": "bad code"}
         )
@@ -194,10 +186,9 @@ def test_login_surfaces_token_error():
         _drive_login()
 
 
-@respx.mock
-def test_refresh_exchanges_refresh_token():
-    respx.get(WELL_KNOWN).mock(return_value=httpx.Response(200, json=_metadata()))
-    route = respx.post(TOKEN).mock(
+def test_refresh_exchanges_refresh_token(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(200, json=_metadata())
+    route = httpx2_mock.post(TOKEN).mock(
         return_value=_token_response(access_token="AT2", refresh_token="RT2")
     )
     tokens = oauth.refresh(SITE, "dcr-client", "RT")
@@ -213,9 +204,8 @@ def test_refresh_without_token_errors():
         oauth.refresh(SITE, "cid", "")
 
 
-@respx.mock
-def test_register_client_posts_public_client():
-    route = respx.post(REGISTER).mock(
+def test_register_client_posts_public_client(httpx2_mock):
+    route = httpx2_mock.post(REGISTER).mock(
         return_value=httpx.Response(201, json={"client_id": "new-client"})
     )
     meta = oauth.Metadata(
@@ -237,9 +227,8 @@ def test_register_client_posts_public_client():
     assert set(payload["grant_types"]) == {"authorization_code", "refresh_token"}
 
 
-@respx.mock
-def test_register_client_error_surfaces():
-    respx.post(REGISTER).mock(
+def test_register_client_error_surfaces(httpx2_mock):
+    httpx2_mock.post(REGISTER).mock(
         return_value=httpx.Response(400, json={"error": "invalid_redirect_uri"})
     )
     meta = oauth.Metadata(AUTHORIZE, TOKEN, REVOKE, "", REGISTER)
@@ -247,16 +236,14 @@ def test_register_client_error_surfaces():
         oauth.register_client(meta, oauth.redirect_uri())
 
 
-@respx.mock
-def test_revoke_posts_token_and_swallows_errors():
-    respx.get(WELL_KNOWN).mock(return_value=httpx.Response(200, json=_metadata()))
-    route = respx.post(REVOKE).mock(return_value=httpx.Response(200))
+def test_revoke_posts_token_and_swallows_errors(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(200, json=_metadata())
+    route = httpx2_mock.post(REVOKE).respond(200)
     oauth.revoke(SITE, "AT")
     assert route.called
     assert "token=AT" in route.calls.last.request.content.decode()
 
 
-@respx.mock
-def test_revoke_never_raises_on_failure():
-    respx.get(WELL_KNOWN).mock(return_value=httpx.Response(500))
+def test_revoke_never_raises_on_failure(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(500)
     oauth.revoke(SITE, "AT")

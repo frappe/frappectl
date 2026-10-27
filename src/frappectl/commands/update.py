@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
-import httpx
+import httpx2
 import typer
 
 from .. import __version__
@@ -147,10 +147,10 @@ def _fetch_latest_release(timeout: float = 2.0) -> str | None:
     can treat "couldn't check" and "no newer version" the same way.
     """
     try:
-        resp = httpx.get(_PYPI_JSON_URL, timeout=timeout, follow_redirects=True)
+        resp = httpx2.get(_PYPI_JSON_URL, timeout=timeout, follow_redirects=True)
         resp.raise_for_status()
         version = resp.json()["info"]["version"]
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+    except (httpx2.HTTPError, ValueError, KeyError, TypeError):
         return None
     return version if isinstance(version, str) else None
 

@@ -1,7 +1,6 @@
 import os
 
 import httpx
-import respx
 from typer.testing import CliRunner
 
 from frappectl.cli import app
@@ -16,13 +15,12 @@ def _env(monkeypatch):
     monkeypatch.setenv("FRAPPE_API_SECRET", "s")
 
 
-@respx.mock
-def test_download_basenames_server_filename(monkeypatch, tmp_path):
+def test_download_basenames_server_filename(httpx2_mock, monkeypatch, tmp_path):
     """A crafted File.file_name must not let the download escape the cwd."""
     _env(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
-    respx.get(f"{BASE}/api/v2/document/File/evil/").mock(
+    httpx2_mock.get(f"{BASE}/api/v2/document/File/evil/").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -33,7 +31,7 @@ def test_download_basenames_server_filename(monkeypatch, tmp_path):
             },
         )
     )
-    respx.get(f"{BASE}/private/files/x.bin").mock(
+    httpx2_mock.get(f"{BASE}/private/files/x.bin").mock(
         return_value=httpx.Response(200, content=b"payload")
     )
 
@@ -45,14 +43,15 @@ def test_download_basenames_server_filename(monkeypatch, tmp_path):
     assert not os.path.exists(tmp_path / ".." / ".." / ".." / "pwned.bin")
 
 
-@respx.mock
-def test_download_does_not_follow_predictable_temp_symlink(monkeypatch, tmp_path):
+def test_download_does_not_follow_predictable_temp_symlink(
+    httpx2_mock, monkeypatch, tmp_path
+):
     _env(monkeypatch)
     monkeypatch.chdir(tmp_path)
     victim = tmp_path / "victim"
     victim.write_bytes(b"keep me")
     (tmp_path / "result.bin.part").symlink_to(victim)
-    respx.get(f"{BASE}/files/result.bin").mock(
+    httpx2_mock.get(f"{BASE}/files/result.bin").mock(
         return_value=httpx.Response(200, content=b"download")
     )
 
