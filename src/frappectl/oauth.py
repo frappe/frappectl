@@ -259,9 +259,10 @@ def login(
     advertises it, otherwise the supplied value. The resolved id is returned so
     the caller can persist it and reuse it on later logins.
 
-    ``paste`` is a stream (the terminal) watched alongside the loopback. A line
-    read from it is taken as the redirect URL, copied from the browser's address
-    bar when the redirect could not reach this machine.
+    ``paste`` is a stream (the terminal) watched alongside the loopback. The
+    first line read from it, or text ended by EOF, is taken as the redirect URL,
+    copied from the browser's address bar when the redirect could not reach this
+    machine.
 
     ``open_browser=False`` and the ``announce`` hook exist so the browser leg can
     be driven in tests (post the code to the loopback directly).
