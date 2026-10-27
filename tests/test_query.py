@@ -2,7 +2,6 @@ import json
 
 import httpx
 import pytest
-import respx
 from typer.testing import CliRunner
 
 from frappectl.cli import app
@@ -24,9 +23,8 @@ def _response(rows):
     return httpx.Response(200, json={"data": {"output": json.dumps(rows)}})
 
 
-@respx.mock
-def test_query_sends_system_console_sql_and_emits_json(env):
-    route = respx.post(URL).mock(return_value=_response([{"count(*)": 4}]))
+def test_query_sends_system_console_sql_and_emits_json(httpx2_mock, env):
+    route = httpx2_mock.post(URL).mock(return_value=_response([{"count(*)": 4}]))
 
     result = runner.invoke(app, ["--json", "query", "select count(*) from tabUser"])
 
@@ -42,8 +40,7 @@ def test_query_sends_system_console_sql_and_emits_json(env):
     }
 
 
-@respx.mock
-def test_query_renders_table_for_human_output(env, monkeypatch):
+def test_query_renders_table_for_human_output(httpx2_mock, env, monkeypatch):
     from frappectl import cli as cli_mod
     from frappectl.output import Ctx
 
@@ -55,7 +52,7 @@ def test_query_renders_table_for_human_output(env, monkeypatch):
         return ctx
 
     monkeypatch.setattr(cli_mod, "Ctx", make_ctx)
-    respx.post(URL).mock(
+    httpx2_mock.post(URL).mock(
         return_value=_response([{"name": "Administrator", "enabled": 1}])
     )
 
@@ -67,9 +64,8 @@ def test_query_renders_table_for_human_output(env, monkeypatch):
     assert "Administrator" in result.stdout
 
 
-@respx.mock
-def test_query_reads_stdin(env):
-    route = respx.post(URL).mock(return_value=_response([]))
+def test_query_reads_stdin(httpx2_mock, env):
+    route = httpx2_mock.post(URL).mock(return_value=_response([]))
 
     result = runner.invoke(app, ["--json", "query", "-"], input="select 1\n")
 
@@ -78,9 +74,8 @@ def test_query_reads_stdin(env):
     assert json.loads(sent["doc"])["console"] == "select 1\n"
 
 
-@respx.mock
-def test_query_surfaces_console_error(env):
-    respx.post(URL).mock(
+def test_query_surfaces_console_error(httpx2_mock, env):
+    httpx2_mock.post(URL).mock(
         return_value=httpx.Response(
             200,
             json={
@@ -103,10 +98,9 @@ def test_query_rejects_empty_input(env):
     assert "must not be empty" in result.stderr
 
 
-@respx.mock
-def test_query_post_is_allowed_for_read_only_profile(env, monkeypatch):
+def test_query_post_is_allowed_for_read_only_profile(httpx2_mock, env, monkeypatch):
     monkeypatch.setenv("FRAPPE_READ_ONLY", "1")
-    route = respx.post(URL).mock(return_value=_response([{"value": 1}]))
+    route = httpx2_mock.post(URL).mock(return_value=_response([{"value": 1}]))
 
     result = runner.invoke(app, ["--json", "query", "select 1 as value"])
 

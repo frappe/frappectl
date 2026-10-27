@@ -11,7 +11,7 @@ import json
 from collections.abc import Callable
 from typing import Any, cast
 
-import httpx
+import httpx2
 
 from .credentials import ApiKeyProvider, CredentialProvider
 from .errors import FrappeError, extract_message
@@ -105,7 +105,7 @@ class FrappeTransport:
                 "(or a localhost address for local development)."
             )
 
-        self._http = httpx.Client(
+        self._http = httpx2.Client(
             base_url=self.site,
             headers={
                 "Authorization": credential_provider.authorization_header(),
@@ -113,7 +113,7 @@ class FrappeTransport:
                 "User-Agent": "frappectl",
             },
             timeout=timeout,
-            # httpx strips the Authorization header on cross-origin redirects,
+            # httpx2 strips the Authorization header on cross-origin redirects,
             # so the credential is never handed to a host we did not configure.
             follow_redirects=True,
             event_hooks=(
@@ -136,7 +136,7 @@ class FrappeTransport:
     def _dbg(line: str) -> None:
         err_console.print(line, markup=False, highlight=False, soft_wrap=True)
 
-    def _log_request(self, request: httpx.Request) -> None:
+    def _log_request(self, request: httpx2.Request) -> None:
         self._dbg(f"→ {request.method} {request.url}")
         for name, value in request.headers.items():
             # Never leak the credential, even to the local terminal. Keep the
@@ -156,7 +156,7 @@ class FrappeTransport:
                     text = text[:_DEBUG_BODY_LIMIT] + "… (truncated)"
                 self._dbg(f"  body: {text}")
 
-    def _log_response(self, response: httpx.Response) -> None:
+    def _log_response(self, response: httpx2.Response) -> None:
         self._dbg(f"← {response.status_code} {response.reason_phrase}")
 
     def _emit_server_debug(self, body: Any) -> None:
@@ -225,7 +225,7 @@ class FrappeTransport:
         )
         return True
 
-    def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+    def _send(self, method: str, path: str, **kwargs: Any) -> httpx2.Response:
         """Send a request, refreshing once and replaying on a 401.
 
         Every HTTP call funnels through here so the refresh-retry applies
@@ -270,11 +270,11 @@ class FrappeTransport:
         """
         try:
             response = self._send("POST", path, json=json_body)
-        except httpx.HTTPError as e:
+        except httpx2.HTTPError as e:
             raise FrappeError(f"Could not reach {self.site}: {e}") from e
         return self.handle_response(response)
 
-    def send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+    def send(self, method: str, path: str, **kwargs: Any) -> httpx2.Response:
         """Send one policy-checked request and return its undecoded response."""
         if self.read_only and method.upper() not in _SAFE_METHODS:
             raise FrappeError(
@@ -284,14 +284,14 @@ class FrappeTransport:
             )
         try:
             return self._send(method, path, **kwargs)
-        except httpx.HTTPError as e:
+        except httpx2.HTTPError as e:
             raise FrappeError(f"Could not reach {self.site}: {e}") from e
 
-    def handle_response(self, response: httpx.Response) -> Any:
+    def handle_response(self, response: httpx2.Response) -> Any:
         """Decode one response through the shared Frappe error policy."""
         return self._handle(response)
 
-    def _handle(self, resp: httpx.Response) -> Any:
+    def _handle(self, resp: httpx2.Response) -> Any:
         body: Any = None
         if resp.content:
             try:
@@ -351,17 +351,17 @@ class FrappeTransport:
                 return total
             finally:
                 resp.close()
-        except httpx.HTTPError as e:
+        except httpx2.HTTPError as e:
             raise FrappeError(f"Could not reach {self.site}: {e}") from e
 
-    def _send_stream(self, path: str, params: dict[str, Any] | None) -> httpx.Response:
+    def _send_stream(self, path: str, params: dict[str, Any] | None) -> httpx2.Response:
         """Open a streaming GET, refreshing once and replaying on a 401.
 
         Mirrors :meth:`_send` for the streaming case, where the body is consumed
         lazily so the response can't be replayed after iteration begins.
         """
 
-        def _open() -> httpx.Response:
+        def _open() -> httpx2.Response:
             return self._http.send(
                 self._http.build_request("GET", path, params=params), stream=True
             )
@@ -378,7 +378,7 @@ class FrappeTransport:
         """Return a paginated response without discarding its page marker."""
         try:
             resp = self._send("GET", path, params=_clean_params(params))
-        except httpx.HTTPError as e:
+        except httpx2.HTTPError as e:
             raise FrappeError(f"Could not reach {self.site}: {e}") from e
         if resp.status_code >= 400:
             body = _safe_json(resp)
@@ -394,7 +394,7 @@ class FrappeTransport:
         """Return data only when the server sent a trusted JSON envelope."""
         try:
             resp = self._send(method, path)
-        except httpx.HTTPError as e:
+        except httpx2.HTTPError as e:
             raise FrappeError(f"Could not reach {self.site}: {e}") from e
         self._handle(resp)
         body = _safe_json(resp)
@@ -439,7 +439,7 @@ def _clean_params(
     for k, v in params.items():
         if v is None:
             continue
-        # httpx serializes scalars (and bool/None) for a query string but not
+        # httpx2 serializes scalars (and bool/None) for a query string but not
         # nested containers. Frappe expects those as JSON strings anyway
         # (filters, structured -F values), so encode dicts/lists here. Values
         # already stringified upstream (e.g. json.dumps'd filters) pass through.
@@ -447,7 +447,7 @@ def _clean_params(
     return cleaned
 
 
-def _safe_json(resp: httpx.Response) -> Any:
+def _safe_json(resp: httpx2.Response) -> Any:
     try:
         return resp.json()
     except (json.JSONDecodeError, ValueError):

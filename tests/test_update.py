@@ -1,7 +1,7 @@
 import json
 import subprocess
 
-import httpx
+import httpx2
 import pytest
 from typer.testing import CliRunner
 
@@ -90,8 +90,8 @@ def test_parse_version_tolerates_prefix_and_suffix():
 
 
 def _pypi_response(payload, status=200):
-    request = httpx.Request("GET", update._PYPI_JSON_URL)
-    return httpx.Response(status, json=payload, request=request)
+    request = httpx2.Request("GET", update._PYPI_JSON_URL)
+    return httpx2.Response(status, json=payload, request=request)
 
 
 def test_fetch_latest_release_reads_pypi(monkeypatch):
@@ -99,28 +99,28 @@ def test_fetch_latest_release_reads_pypi(monkeypatch):
         assert url == update._PYPI_JSON_URL
         return _pypi_response({"info": {"version": "1.0.0"}})
 
-    monkeypatch.setattr(update.httpx, "get", fake_get)
+    monkeypatch.setattr(update.httpx2, "get", fake_get)
     assert update._fetch_latest_release() == "1.0.0"
 
 
 def test_fetch_latest_release_swallows_network_failure(monkeypatch):
     def boom(url, **kwargs):
-        raise httpx.ConnectError("network down")
+        raise httpx2.ConnectError("network down")
 
-    monkeypatch.setattr(update.httpx, "get", boom)
+    monkeypatch.setattr(update.httpx2, "get", boom)
     assert update._fetch_latest_release() is None
 
 
 def test_fetch_latest_release_swallows_http_error(monkeypatch):
     monkeypatch.setattr(
-        update.httpx, "get", lambda url, **k: _pypi_response({}, status=503)
+        update.httpx2, "get", lambda url, **k: _pypi_response({}, status=503)
     )
     assert update._fetch_latest_release() is None
 
 
 def test_fetch_latest_release_swallows_bad_payload(monkeypatch):
     monkeypatch.setattr(
-        update.httpx, "get", lambda url, **k: _pypi_response({"info": {}})
+        update.httpx2, "get", lambda url, **k: _pypi_response({"info": {}})
     )
     assert update._fetch_latest_release() is None
 

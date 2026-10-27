@@ -34,7 +34,7 @@ from dataclasses import dataclass, replace
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, cast
 
-import httpx
+import httpx2
 from authlib.common.errors import AuthlibBaseError
 from authlib.integrations.httpx_client import OAuth2Client
 
@@ -123,9 +123,9 @@ def discover(site: str) -> Metadata:
     _require_secure_transport(site)
     url = f"{site}/.well-known/oauth-authorization-server"
     try:
-        with httpx.Client(timeout=_HTTP_TIMEOUT, follow_redirects=True) as client:
+        with httpx2.Client(timeout=_HTTP_TIMEOUT, follow_redirects=True) as client:
             resp = client.get(url, headers={"Accept": "application/json"})
-    except httpx.HTTPError as e:
+    except httpx2.HTTPError as e:
         raise OAuthError(f"Could not reach {site} for OAuth discovery: {e}") from e
 
     if resp.status_code == 404:
@@ -294,7 +294,7 @@ def login(
         )
     except AuthlibBaseError as e:
         raise OAuthError(f"Token exchange failed: {e}") from e
-    except httpx.HTTPError as e:
+    except httpx2.HTTPError as e:
         raise OAuthError(f"Could not reach the token endpoint: {e}") from e
 
     return _tokens_from(token), client_id
@@ -349,7 +349,7 @@ def refresh(site: str, client_id: str, refresh_token: str) -> Tokens:
         token = client.refresh_token(meta.token_endpoint, refresh_token=refresh_token)
     except AuthlibBaseError as e:
         raise OAuthError(f"Token refresh failed: {e}") from e
-    except httpx.HTTPError as e:
+    except httpx2.HTTPError as e:
         raise OAuthError(f"Could not reach the token endpoint: {e}") from e
     return _tokens_from(token)
 
@@ -371,13 +371,13 @@ def register_client(meta: Metadata, redirect: str) -> str:
         "scope": _SCOPE,
     }
     try:
-        with httpx.Client(timeout=_HTTP_TIMEOUT, follow_redirects=True) as client:
+        with httpx2.Client(timeout=_HTTP_TIMEOUT, follow_redirects=True) as client:
             resp = client.post(
                 meta.registration_endpoint,
                 json=body,
                 headers={"Accept": "application/json"},
             )
-    except httpx.HTTPError as e:
+    except httpx2.HTTPError as e:
         raise OAuthError(f"Could not reach the registration endpoint: {e}") from e
 
     payload = _json_or_none(resp)
@@ -394,9 +394,9 @@ def revoke(site: str, token: str) -> None:
         return
     try:
         meta = discover(site.rstrip("/"))
-        with httpx.Client(timeout=_HTTP_TIMEOUT, follow_redirects=True) as client:
+        with httpx2.Client(timeout=_HTTP_TIMEOUT, follow_redirects=True) as client:
             client.post(meta.revocation_endpoint, data={"token": token})
-    except (httpx.HTTPError, OAuthError):
+    except (httpx2.HTTPError, OAuthError):
         # Logout should always succeed locally even if the server is unreachable.
         pass
 
@@ -425,7 +425,7 @@ def _redirect_error(result: dict[str, str]) -> str:
     return f"Authorization was denied: {err}"
 
 
-def _json_or_none(resp: httpx.Response) -> Any:
+def _json_or_none(resp: httpx2.Response) -> Any:
     try:
         return resp.json()
     except ValueError:
