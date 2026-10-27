@@ -203,6 +203,19 @@ def test_login_rejects_pasted_text_that_is_not_a_redirect(httpx2_mock):
 
 
 @pytest.mark.httpx2(assert_all_called=False)
+def test_login_rejects_pasted_redirect_from_another_attempt(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(200, json=_metadata())
+    token_route = httpx2_mock.post(TOKEN).mock(return_value=_token_response())
+
+    with pytest.raises(oauth.OAuthError, match="mismatching_state"):
+        _drive_paste_login(
+            lambda state: oauth.redirect_uri(9876) + "?code=X&state=WRONG\n"
+        )
+
+    assert not token_route.called
+
+
+@pytest.mark.httpx2(assert_all_called=False)
 def test_login_uses_configured_client_without_dcr(httpx2_mock):
     httpx2_mock.get(WELL_KNOWN).mock(
         return_value=httpx.Response(200, json=_metadata(with_registration=False))
