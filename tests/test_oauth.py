@@ -151,18 +151,27 @@ def test_login_dcr_registers_and_exchanges(httpx2_mock):
     assert token_route.called
 
 
-def _drive_paste_login(make_line: Callable[[str], str]) -> oauth.Tokens:
+def _drive_paste_login(
+    make_line: Callable[[str], str], *, then_eof: bool = False
+) -> oauth.Tokens:
     """Run oauth.login with nothing on the loopback; paste a line instead.
 
     ``make_line`` gets the authorize URL's ``state`` and returns what the user
-    pastes, as when the browser runs on another machine over SSH.
+    pastes, as when the browser runs on another machine over SSH. With
+    ``then_eof`` the paste stream closes right after, as when the user presses
+    Ctrl-D instead of Enter.
     """
     port = next(_next_port)
     read_fd, write_fd = os.pipe()
+    write_open = True
 
     def announce(url: str) -> None:
+        nonlocal write_open
         state = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["state"][0]
         os.write(write_fd, make_line(state).encode())
+        if then_eof:
+            os.close(write_fd)
+            write_open = False
 
     with os.fdopen(read_fd) as paste:
         try:
@@ -176,7 +185,8 @@ def _drive_paste_login(make_line: Callable[[str], str]) -> oauth.Tokens:
                 paste=paste,
             )
         finally:
-            os.close(write_fd)
+            if write_open:
+                os.close(write_fd)
     return tokens
 
 
@@ -189,6 +199,21 @@ def test_login_accepts_pasted_redirect_url(httpx2_mock):
         + "?"
         + urllib.parse.urlencode({"code": "PASTED", "state": state})
         + "\n"
+    )
+
+    assert tokens.access_token == "AT"
+    assert "code=PASTED" in token_route.calls.last.request.content.decode()
+
+
+def test_login_accepts_pasted_redirect_url_ended_by_eof(httpx2_mock):
+    httpx2_mock.get(WELL_KNOWN).respond(200, json=_metadata())
+    token_route = httpx2_mock.post(TOKEN).mock(return_value=_token_response())
+
+    tokens = _drive_paste_login(
+        lambda state: oauth.redirect_uri(9876)
+        + "?"
+        + urllib.parse.urlencode({"code": "PASTED", "state": state}),
+        then_eof=True,
     )
 
     assert tokens.access_token == "AT"
