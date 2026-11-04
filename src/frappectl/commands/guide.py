@@ -90,12 +90,18 @@ RAW API
 """
 
 
-def render_sites() -> str:
-    """Indented listing of stored profiles, one site per line."""
+def render_sites(only: str | None = None) -> str:
+    """Indented listing of stored profiles, one site per line.
+
+    ``only`` limits the listing to one profile. A scoped assistant session uses
+    it, so the agent does not learn of sites outside its scope.
+    """
     try:
         profiles, default = config.list_profiles()
     except config.ConfigError:
         profiles, default = {}, None
+    if only is not None:
+        profiles = {k: v for k, v in profiles.items() if k == only}
     if not profiles:
         return "    (none configured. See the auth commands below.)"
     lines = []
@@ -115,9 +121,9 @@ def render_sites() -> str:
     return "\n".join(lines)
 
 
-def render_guide() -> str:
+def render_guide(only: str | None = None) -> str:
     """The full guide, with the configured sites spliced in."""
-    return GUIDE.replace(_SITES_MARKER, render_sites())
+    return GUIDE.replace(_SITES_MARKER, render_sites(only))
 
 
 def guide() -> None:
