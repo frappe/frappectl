@@ -18,7 +18,14 @@ def _isolate(monkeypatch, tmp_path):
         assistant.shutil, "which", lambda name: name if name in installed else None
     )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    monkeypatch.setattr(guide, "render_sites", lambda: "    - staging: https://x")
+    monkeypatch.setattr(
+        guide.config,
+        "list_profiles",
+        lambda: (
+            {"staging": {"site": "https://x"}, "prod": {"site": "https://p"}},
+            None,
+        ),
+    )
 
 
 def _argv(result) -> list[str]:
@@ -158,3 +165,26 @@ def test_system_prompt_includes_guide_and_sites():
     sp = assistant._system_prompt()
     assert "frappectl" in sp
     assert "staging: https://x" in sp
+
+
+def test_unscoped_prompt_lists_all_sites():
+    sp = assistant._system_prompt()
+    assert "prod: https://p" in sp
+    assert "SESSION SCOPE" not in sp
+
+
+def test_site_flag_scopes_prompt_to_one_profile():
+    result = runner.invoke(
+        app, ["--site", "staging", "assistant", "claude", "--dry-run"]
+    )
+    assert result.exit_code == 0
+    prompt = _argv(result)[-1]
+    assert "staging: https://x" in prompt
+    assert "prod: https://p" not in prompt
+    assert "Pass `-s staging`" in prompt
+
+
+def test_site_flag_rejects_unknown_profile():
+    result = runner.invoke(app, ["--site", "nope", "assistant", "claude", "--dry-run"])
+    assert result.exit_code == 2
+    assert "Unknown profile: nope" in result.output

@@ -47,6 +47,13 @@ Use this `frappectl guide` output to use `frappectl` effectively:
 
 {guide}"""
 
+_SCOPE_TEMPLATE = """
+
+SESSION SCOPE
+  This session is scoped to the `{profile}` profile. Pass `-s {profile}` to
+  every `frappectl` command that reaches a site. Do not use other profiles,
+  and do not log in to other sites."""
+
 
 @dataclass
 class Launch:
@@ -150,8 +157,20 @@ TOOLS: list[Tool] = [
 _TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 
-def _system_prompt() -> str:
-    return _SYSTEM_PROMPT_TEMPLATE.format(guide=render_guide())
+def _system_prompt(profile: Optional[str] = None) -> str:
+    prompt = _SYSTEM_PROMPT_TEMPLATE.format(guide=render_guide(profile))
+    if profile is not None:
+        prompt += _SCOPE_TEMPLATE.format(profile=profile)
+    return prompt
+
+
+def _check_profile(profile: str) -> None:
+    try:
+        profiles, _ = config.list_profiles()
+    except config.ConfigError as e:
+        raise fail(str(e), 2)
+    if profile not in profiles:
+        raise fail(f"Unknown profile: {profile}. See `frappectl auth list`.", 2)
 
 
 def _assistant_dir(tool_name: str) -> Path:
@@ -214,8 +233,16 @@ def assistant(
     Anything after `--` is passed straight through to the tool, e.g.:
 
     frappectl assistant pi -- "list overdue invoices on staging"
+
+    Pass the global `-s <profile>` to scope the session to one site. The
+    prompt then lists only that profile:
+
+    frappectl -s staging assistant claude
     """
     chosen = _pick_tool(tool)
+    profile = ctx.obj.profile if ctx.obj else None
+    if profile is not None:
+        _check_profile(profile)
 
     if not shutil.which(chosen.binary):
         raise fail(f"'{chosen.binary}' not found on PATH.", 127)
@@ -228,7 +255,7 @@ def assistant(
         )
 
     tool_dir = _assistant_dir(chosen.name)
-    launch = chosen.build(_system_prompt(), tool_dir)
+    launch = chosen.build(_system_prompt(profile), tool_dir)
     argv = [*launch.argv, *ctx.args]
 
     if dry_run:
