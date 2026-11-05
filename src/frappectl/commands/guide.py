@@ -37,8 +37,9 @@ SITE ACCESS
   frappectl auth login <url> --oauth --name <profile> --description "..."
 
   Always log in with --oauth. OAuth stores no secret, and its tokens refresh
-  automatically. It needs a terminal and a local browser. If you do not have a
-  terminal, ask the human to run the auth login command above. Do not put
+  automatically. It needs a terminal and a browser; over SSH, the human pastes
+  the redirect URL back into the terminal. If you do not have a terminal, ask
+  the human to run the auth login command above. Do not put
   credentials in command arguments, files or logs.
 
 ORIENT YOURSELF (do this before you guess a field name or a DocType name)
