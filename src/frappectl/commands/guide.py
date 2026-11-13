@@ -41,6 +41,10 @@ SITE ACCESS
   terminal, ask the human to run the auth login command above. Do not put
   credentials in command arguments, files or logs.
 
+  Each request names your agent tool (for example "Claude Code") to the site, so
+  the document timeline shows which changes you made. If `auth whoami` shows no
+  agent or a wrong one, set FRAPPE_AGENT to the name of your tool.
+
 ORIENT YOURSELF (do this before you guess a field name or a DocType name)
   frappectl doctype list                           # all DocTypes on the site
   frappectl doctype list --module HR --custom      # a smaller list

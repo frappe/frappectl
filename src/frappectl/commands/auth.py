@@ -7,7 +7,7 @@ from typing import Optional
 
 import typer
 
-from .. import config, oauth
+from .. import agent, config, oauth
 from ..client import FrappeClient
 from ..credentials import OAuthProvider
 from ..errors import FrappeError
@@ -384,6 +384,7 @@ def whoami(ctx: typer.Context) -> None:
         "auth": "oauth" if creds.token_type == "bearer" else "api_key",
         "description": creds.description,
         "read_only": creds.read_only,
+        "agent": agent.detect(),
     }
     # Report the token in use after any refresh, not the stale stored one.
     if isinstance(provider, OAuthProvider) and provider.credential.expires_at:
