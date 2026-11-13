@@ -16,7 +16,9 @@ cover is Frappe-specific and lives here:
    dynamically register a *public* client (RFC 7591) whose one redirect URI is
    our fixed loopback URL, and hand the ``client_id`` back to the caller to
    persist. Otherwise the caller must supply a pre-registered public client id.
-3. Catch the browser **redirect** on a one-shot loopback server.
+3. Catch the browser **redirect** on a one-shot loopback server, or accept the
+   redirect URL pasted into the terminal when the browser runs on another
+   machine (an SSH session), where the loopback is unreachable.
 
 Frappe matches redirect URIs byte-for-byte (it does *not* honour RFC 8252's
 "any loopback port" rule), so we use a **fixed** loopback port and register that
@@ -25,14 +27,16 @@ exact URI.
 
 from __future__ import annotations
 
+import os
 import secrets
+import select
 import time
 import urllib.parse
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, cast
+from typing import Any, TextIO, cast
 
 import httpx2
 from authlib.common.errors import AuthlibBaseError
@@ -49,6 +53,9 @@ _CALLBACK_PATH = "/callback"
 
 LOGIN_TIMEOUT = 300.0
 _POLL_INTERVAL = 1.0
+# The wait loop watches the terminal with select(), which takes only sockets
+# on Windows, so a pasted redirect is accepted on POSIX alone.
+PASTE_SUPPORTED = os.name == "posix"
 
 # Scopes: ``openid`` lets us confirm identity via the userinfo endpoint;
 # ``all`` grants the same API surface an API key would.
@@ -180,6 +187,10 @@ class _LoopbackServer(HTTPServer):
 
 
 class _CallbackHandler(BaseHTTPRequestHandler):
+    # Bound the read of a stalled connection (a browser preconnect that sends
+    # nothing), so it cannot hold up the wait loop and the paste fallback.
+    timeout = _POLL_INTERVAL
+
     def do_GET(self) -> None:  # noqa: N802 (http.server naming)
         server = cast("_LoopbackServer", self.server)
         parsed = urllib.parse.urlparse(self.path)
@@ -187,8 +198,7 @@ class _CallbackHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        params = urllib.parse.parse_qs(parsed.query)
-        flat = {k: v[0] for k, v in params.items() if v}
+        flat = _redirect_params(parsed.query)
         server.result = flat
         ok = "code" in flat and "error" not in flat
         body = _result_page(ok, flat.get("error"))
@@ -241,12 +251,18 @@ def login(
     open_browser: bool = True,
     timeout: float = LOGIN_TIMEOUT,
     announce: Callable[[str], None] | None = None,
+    paste: TextIO | None = None,
 ) -> tuple[Tokens, str]:
     """Run the full authorization-code + PKCE flow. Return ``(tokens, client_id)``.
 
     ``client_id`` is resolved automatically: dynamic registration when the site
     advertises it, otherwise the supplied value. The resolved id is returned so
     the caller can persist it and reuse it on later logins.
+
+    ``paste`` is a stream (the terminal) watched alongside the loopback. The
+    first line read from it, or text ended by EOF, is taken as the redirect URL,
+    copied from the browser's address bar when the redirect could not reach this
+    machine.
 
     ``open_browser=False`` and the ``announce`` hook exist so the browser leg can
     be driven in tests (post the code to the loopback directly).
@@ -278,6 +294,7 @@ def login(
         open_browser=open_browser,
         timeout=timeout,
         announce=announce,
+        paste=paste,
     )
     if result.get("error"):
         raise OAuthError(_redirect_error(result))
@@ -307,6 +324,7 @@ def _await_redirect(
     open_browser: bool,
     timeout: float,
     announce: Callable[[str], None] | None,
+    paste: TextIO | None,
 ) -> dict[str, str]:
     try:
         server = _LoopbackServer((_LOOPBACK_HOST, port), _CallbackHandler)
@@ -317,25 +335,61 @@ def _await_redirect(
             "(the port must match a redirect URI registered on the site)."
         ) from e
 
-    server.result = None
-    server.timeout = _POLL_INTERVAL
+    result: dict[str, str] | None = None
     try:
         if announce:
             announce(authorize_url)
         if open_browser:
             webbrowser.open(authorize_url)
         deadline = time.monotonic() + timeout
-        while server.result is None and time.monotonic() < deadline:
-            server.handle_request()
+        pasted = b""
+        while result is None and time.monotonic() < deadline:
+            sources: list[HTTPServer | TextIO] = [server, paste] if paste else [server]
+            ready, _, _ = select.select(sources, [], [], _POLL_INTERVAL)
+            if server in ready:
+                server.handle_request()
+                result = server.result
+            elif paste and paste in ready:
+                # Read only what is available: readline() would block on a
+                # partial line (ended by Ctrl-D) and starve the loopback.
+                chunk = os.read(paste.fileno(), 4096)
+                if chunk:
+                    pasted += chunk
+                    line, newline, _ = pasted.partition(b"\n")
+                    if newline:
+                        result = _parse_pasted_redirect(line.decode(errors="replace"))
+                elif pasted.strip():
+                    # EOF after text with no newline: parse what was pasted.
+                    result = _parse_pasted_redirect(pasted.decode(errors="replace"))
+                else:
+                    paste = None  # EOF: keep waiting on the loopback alone.
     finally:
         server.server_close()
 
-    if server.result is None:
+    if result is None:
         raise OAuthError(
             "Timed out waiting for the authorization redirect. Complete the login "
             "in the browser, or retry."
         )
-    return server.result
+    return result
+
+
+def _parse_pasted_redirect(text: str) -> dict[str, str]:
+    """Read the redirect parameters from a pasted URL (or its bare query)."""
+    text = text.strip()
+    flat = _redirect_params(urllib.parse.urlparse(text).query or text)
+    if "code" not in flat and "error" not in flat:
+        raise OAuthError(
+            "The pasted text is not the redirect URL. Copy the full address of "
+            "the page the browser was sent to after you approved the login."
+        )
+    return flat
+
+
+def _redirect_params(query: str) -> dict[str, str]:
+    """The redirect's query parameters, first value of each."""
+    params = urllib.parse.parse_qs(query)
+    return {k: v[0] for k, v in params.items() if v}
 
 
 def refresh(site: str, client_id: str, refresh_token: str) -> Tokens:
