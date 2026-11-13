@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import httpx2
 
+from .agent import HEADER as AGENT_HEADER
 from .credentials import ApiKeyProvider, CredentialProvider
 from .errors import FrappeError, extract_message
 from .output import err_console
@@ -81,6 +82,7 @@ class FrappeTransport:
         token_type: str = "token",
         on_unauthorized: Callable[[], str | None] | None = None,
         credential_provider: CredentialProvider | None = None,
+        agent: str | None = None,
     ):
         site_url = SiteURL.parse(site)
         self.site = str(site_url)
@@ -105,13 +107,17 @@ class FrappeTransport:
                 "(or a localhost address for local development)."
             )
 
+        headers = {
+            "Authorization": credential_provider.authorization_header(),
+            "Accept": "application/json",
+            "User-Agent": "frappectl",
+        }
+        if agent:
+            headers[AGENT_HEADER] = agent
+
         self._http = httpx2.Client(
             base_url=self.site,
-            headers={
-                "Authorization": credential_provider.authorization_header(),
-                "Accept": "application/json",
-                "User-Agent": "frappectl",
-            },
+            headers=headers,
             timeout=timeout,
             # httpx2 strips the Authorization header on cross-origin redirects,
             # so the credential is never handed to a host we did not configure.

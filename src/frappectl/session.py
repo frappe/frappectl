@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 
-from . import config
+from . import agent, config
 from .client import FrappeClient
 from .credentials import (
     ApiKeyProvider,
@@ -46,6 +46,7 @@ class ClientFactory:
                 read_only=creds.read_only,
                 token_type=creds.token_type,
                 credential_provider=provider,
+                agent=agent.detect(),
             )
         except CredentialRefreshError as e:
             raise fail(str(e), 2)
