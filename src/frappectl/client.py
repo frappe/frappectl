@@ -25,6 +25,7 @@ class FrappeClient:
         token_type: str = "token",
         on_unauthorized: Callable[[], str | None] | None = None,
         credential_provider: CredentialProvider | None = None,
+        agent: str | None = None,
     ):
         self._transport = FrappeTransport(
             site,
@@ -35,6 +36,7 @@ class FrappeClient:
             token_type=token_type,
             on_unauthorized=on_unauthorized,
             credential_provider=credential_provider,
+            agent=agent,
         )
         self.site = self._transport.site
         self.debug = debug
