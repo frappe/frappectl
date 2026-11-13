@@ -108,6 +108,24 @@ working.
 For environment-variable auth, set `FRAPPE_READ_ONLY=1`. To invoke a whitelisted read
 method, make the safe verb explicit: `frappectl api method/… -X GET`.
 
+### Agent attribution
+
+When an LLM agent runs frappectl, each request sends the agent name in the
+`X-Frappe-Agent` header. Frappe records the name in Version, and the form timeline shows
+"using Claude Code via API" next to each change the agent made.
+
+frappectl finds the agent from the variables that agent harnesses set, such as
+`CLAUDECODE`, `CODEX_SANDBOX`, `GEMINI_CLI` or `AI_AGENT`. `frappectl assistant` sets the
+name for the tool that it starts. `frappectl auth whoami` shows the name that frappectl
+sends.
+
+```sh
+export FRAPPE_AGENT="Nightly sync"   # send this name instead
+export FRAPPE_AGENT=                 # send no name
+```
+
+The site must run a Frappe version that records agents. Other sites ignore the header.
+
 ## Output and scripting
 
 - TTY → rich tables and colours.
