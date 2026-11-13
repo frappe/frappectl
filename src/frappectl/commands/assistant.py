@@ -71,6 +71,8 @@ class Tool:
 
     name: str
     binary: str
+    # Sent to the site as the agent that made a change. See frappectl.agent.
+    agent: str
     # Plan a launch given the system prompt and this tool's private config dir.
     # Pure: it may READ the filesystem but must not mutate it (dry-run relies on
     # this). Actual writes/symlinks are described in the returned Launch.
@@ -148,11 +150,11 @@ def _flow_build(system_prompt: str, tool_dir: Path) -> Launch:
 
 # Order matters: it decides the auto-pick when no tool is named.
 TOOLS: list[Tool] = [
-    Tool(name="pi", binary="pi", build=_pi_build),
-    Tool(name="claude", binary="claude", build=_claude_build),
-    Tool(name="codex", binary="codex", build=_codex_build),
-    Tool(name="flow", binary="flow", build=_flow_build),
-    Tool(name="opencode", binary="opencode", build=_opencode_build),
+    Tool(name="pi", binary="pi", agent="pi", build=_pi_build),
+    Tool(name="claude", binary="claude", agent="Claude Code", build=_claude_build),
+    Tool(name="codex", binary="codex", agent="Codex", build=_codex_build),
+    Tool(name="flow", binary="flow", agent="Flow", build=_flow_build),
+    Tool(name="opencode", binary="opencode", agent="opencode", build=_opencode_build),
 ]
 _TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
@@ -256,6 +258,10 @@ def assistant(
 
     tool_dir = _assistant_dir(chosen.name)
     launch = chosen.build(_system_prompt(profile), tool_dir)
+    # Some tools set no variable that frappectl.agent can detect. Keep a name
+    # that the user set, because it can be more exact than ours.
+    if "FRAPPE_AGENT" not in os.environ:
+        launch.env["FRAPPE_AGENT"] = chosen.agent
     argv = [*launch.argv, *ctx.args]
 
     if dry_run:
