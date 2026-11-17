@@ -84,8 +84,14 @@ frappectl auth login https://erp.example.com --client-id <public-client-id>
 Sites with dynamic client registration create the client automatically. Frappe v15+
 supports this by default; other sites need a pre-registered public `--client-id`.
 
-OAuth needs a terminal and local browser, so it isn't the headless path. Use `--oauth`
+OAuth needs a terminal and a browser, so it isn't the headless path. Use `--oauth`
 to skip the authentication-method prompt.
+
+Over SSH, open the printed link in the browser on your own machine. After you approve,
+the browser is sent to `http://127.0.0.1:9876/callback`, which fails to load because
+frappectl is listening on the remote machine. Copy that URL from the address bar and
+paste it into the terminal. Forwarding the port (`ssh -L 9876:127.0.0.1:9876 host`)
+also works and skips the paste.
 
 ### Read-only profiles
 
