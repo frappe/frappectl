@@ -270,6 +270,8 @@ class FrappeTransport:
     def request_read_only_post(self, path: str, *, json_body: Any) -> Any:
         """POST to an endpoint whose server-side contract guarantees no writes.
 
+        System Console SQL and the UI relay's reads (never its ``run``) use it.
+
         This deliberately bypasses the HTTP-verb guard used by read-only profiles.
         Keep it private to trusted client operations rather than exposing a generic
         CLI bypass.
