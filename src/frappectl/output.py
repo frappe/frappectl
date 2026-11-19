@@ -28,8 +28,6 @@ class Output:
 
     def __init__(self, json_mode: bool, *, is_tty: bool | None = None):
         self.is_tty = sys.stdout.isatty() if is_tty is None else is_tty
-        # `json` is also true for a pipe; `json_requested` only for --json.
-        self.json_requested = json_mode
         self.json = json_mode or not self.is_tty
 
     def emit_json(self, value: object) -> None:

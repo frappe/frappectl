@@ -67,19 +67,6 @@ REPORTS AND READ-ONLY SQL
   frappectl report run "Accounts Receivable" -f company="Frappe" --json
   frappectl query 'select count(*) as users from tabUser'  # needs the System Manager role or Administrator
 
-DRIVE AN OPEN DESK TAB
-  The person turns on "Let agents drive my open tabs" in My Settings > Profile
-  > Agents, then reloads the tab. Every command takes --tab <id>.
-  frappectl ui tabs                          # open desk v2 tabs
-  frappectl ui acts --surface list           # acts the page offers
-  frappectl ui state --fields                # route, page, record fields
-  frappectl ui run list.set_filters '{"filters":[["status","=","Open"]]}'
-  frappectl ui dialogs                       # what is open in the tab
-  frappectl ui wait <call>                   # after the person answered
-  Exit 0 is done, 2 is waiting_for_user (the person must answer the dialog in
-  the tab; never answer it yourself, then run ui wait), 1 is any other error.
-  A read-only profile refuses ui run.
-
 FILES
   frappectl file upload ./contract.pdf --doctype "Sales Invoice" --name SINV-0001 --private
   frappectl file download <File name|/files/url> -o out.pdf   # '-o -' writes to stdout

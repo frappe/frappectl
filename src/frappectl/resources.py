@@ -20,68 +20,6 @@ from .transport import (
 DISCOVERY_MAX_RETRY_WAIT = 30.0
 
 
-class UIRelayAPI:
-    """The tabs a person has open, and the acts an agent runs in one of them.
-
-    Backed by ``frappe.desk.ui_relay`` on a site whose user turned on "Let
-    agents drive my open tabs". ``run`` changes what the person sees and may
-    change data, so a read-only profile refuses it; every other op only reads.
-    """
-
-    _PATH = "/api/v2/method/frappe.desk.ui_relay"
-    # Ops that only read the tab. `wait` only picks up a call that `run` already
-    # started. Anything else is refused here, so a new write op cannot slip past
-    # a read-only profile.
-    _READ_OPS = frozenset({"acts", "state", "dialogs", "wait"})
-
-    def __init__(self, transport: FrappeTransport):
-        self._transport = transport
-
-    def tabs(self) -> list[dict[str, Any]]:
-        result = self._transport.request_read_only_post(
-            f"{self._PATH}.tabs", json_body={}
-        )
-        return cast(list[dict[str, Any]], result)
-
-    def call(
-        self,
-        op: str,
-        *,
-        tab: str | None = None,
-        act: str | None = None,
-        args: Any = None,
-        call_id: str | None = None,
-    ) -> dict[str, Any]:
-        body = {
-            key: value
-            for key, value in {
-                "op": op,
-                "tab": tab,
-                "act": act,
-                "args": args,
-                "call_id": call_id,
-            }.items()
-            if value is not None
-        }
-        path = f"{self._PATH}.call"
-        if op in self._READ_OPS:
-            return cast(
-                dict[str, Any],
-                self._transport.request_read_only_post(path, json_body=body),
-            )
-        if op != "run":
-            raise FrappeError(f"Unknown UI relay op: {op!r}.")
-        if self._transport.read_only:
-            raise FrappeError(
-                "Refusing to run an act: this profile is read-only. Use a "
-                "writable profile. `tabs`, `acts`, `state`, `dialogs` and "
-                "`wait` still work."
-            )
-        return cast(
-            dict[str, Any], self._transport.request("POST", path, json_body=body)
-        )
-
-
 class DocumentsAPI:
     def __init__(self, transport: FrappeTransport):
         self._transport = transport
