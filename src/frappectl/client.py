@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any, BinaryIO
 
 from .credentials import CredentialProvider
-from .resources import DiscoveryAPI, DocumentsAPI, FilesAPI, MethodsAPI, UIRelayAPI
+from .resources import DiscoveryAPI, DocumentsAPI, FilesAPI, MethodsAPI
 from .transport import DEFAULT_TIMEOUT, Document, Filters, FrappeTransport
 
 __all__ = ["Document", "Filters", "FrappeClient"]
@@ -45,7 +45,6 @@ class FrappeClient:
         self.methods = MethodsAPI(self._transport)
         self.discovery = DiscoveryAPI(self._transport)
         self.files = FilesAPI(self._transport)
-        self.ui = UIRelayAPI(self._transport)
 
     def close(self) -> None:
         self._transport.close()

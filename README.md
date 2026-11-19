@@ -163,29 +163,10 @@ it won't corrupt `--json` output.
 | `frappectl method search\|list\|show` | Discover whitelisted methods (RPC paths and doctype methods). |
 | `frappectl method call <path>` | Invoke an RPC method; add `--doctype/--name` to call a doctype method. |
 | `frappectl file upload\|download` | Transfer files; upload supports `--doctype/--name` and `--private`. |
-| `frappectl ui tabs\|acts\|state\|dialogs\|run\|wait` | Drive a person's open desk v2 tab through its acts. Exit 0 done, 2 waiting for the person, 1 error. See [Drive an open desk tab](#drive-an-open-desk-tab). |
 | `frappectl api <path>` | Call raw v2 APIs: `frappectl api method/<path> -F key=value`. |
 | `frappectl guide` | Print the agent primer; no site or authentication needed. |
 | `frappectl assistant [pi\|claude\|codex\|flow]` | Launch a coding agent configured as a Frappe assistant. |
 | `frappectl update` | Self-upgrade via `uv tool upgrade`. |
-
-### Drive an open desk tab
-
-`frappectl ui` works the desk v2 tab a person has open, through the same acts the UI uses. The person turns on **Let agents drive my open tabs** in My Settings > Profile > Agents, then reloads the tab. Without it every command fails with a 403 and a tip.
-
-```bash
-frappectl ui tabs                                  # open tabs, last focused first
-frappectl ui acts --surface list                   # acts the current page offers
-frappectl ui state --fields                        # route, page, and record fields
-frappectl ui run record.set_values '{"values":{"customer":"Acme"}}'
-frappectl ui run header.submit                     # exit 2: the person must confirm
-frappectl ui dialogs                               # what is open in the tab
-frappectl ui wait <call>                           # after the person answered
-```
-
-Every command takes `--tab <id>`; without it the last focused tab answers. Output is a short text summary by default, even when piped. `--json` prints the full result. `run` is refused on a read-only profile; the other commands still work.
-
-Exit codes: `0` done, `2` `waiting_for_user` (a dialog needs the person; never answer it yourself, then `ui wait <call>`), `1` any other error. A usage error (a missing argument, or a value like `-1` that looks like a flag; put it after `--`) exits 2, as everywhere in frappectl.
 
 ### Filtering
 
