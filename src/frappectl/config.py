@@ -150,8 +150,9 @@ class KeyringSecretStore:
             ) from e
 
     def set(self, profile: str, secret: str) -> None:
+        kr = self._keyring_factory()
         try:
-            self._keyring_factory().set_password(KEYRING_SERVICE, profile, secret)
+            kr.set_password(KEYRING_SERVICE, profile, secret)
         except Exception as e:
             raise ConfigError(
                 "Could not store credentials in the OS keyring "
@@ -416,16 +417,35 @@ def config_path() -> Path:
     return config_dir() / "config.json"
 
 
+NO_KEYRING_MESSAGE = """No OS keyring is available to store credentials.
+For a headless setup, set these environment variables instead:
+
+  export FRAPPE_SITE=https://erp.example.com
+  export FRAPPE_API_KEY=your-api-key
+  export FRAPPE_API_SECRET=your-api-secret
+
+To get an API key and secret, open your User record on the site and use
+Generate Keys in the API Access section."""
+
+
 def _keyring() -> ModuleType:
     try:
         import keyring
-
-        return keyring
+        from keyring.backends import fail, null
     except Exception as e:  # pragma: no cover - import guard
-        raise ConfigError(
-            "The 'keyring' package is unavailable. Use environment variables "
-            "(FRAPPE_SITE, FRAPPE_API_KEY, FRAPPE_API_SECRET) instead."
-        ) from e
+        raise ConfigError(NO_KEYRING_MESSAGE) from e
+
+    # keyring picks the fail backend when no Secret Service, Keychain or
+    # Credential Manager exists (e.g. WSL, containers, SSH boxes). The null
+    # backend silently drops writes, which would lose the secret.
+    if isinstance(keyring.get_keyring(), (fail.Keyring, null.Keyring)):
+        raise ConfigError(NO_KEYRING_MESSAGE)
+    return keyring
+
+
+def ensure_keyring() -> None:
+    """Raise ConfigError with the headless setup steps if no keyring exists."""
+    _keyring()
 
 
 def list_profiles() -> tuple[dict[str, dict[str, Any]], str | None]:
