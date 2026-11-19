@@ -63,6 +63,10 @@ DOCUMENTS (create, read, update, delete, and lifecycle)
   work. For other operators, use --filters-json
   '[["status","in",["Paid","Overdue"]]]'.
 
+  Respect the field rules that `doctype show` gives. The desk UI evaluates
+  depends_on, mandatory_depends_on and read_only_depends_on, but the
+  server does not, so check them yourself before you write.
+
 REPORTS AND READ-ONLY SQL
   frappectl report run "Accounts Receivable" -f company="Frappe" --json
   frappectl query 'select count(*) as users from tabUser'  # needs the System Manager role or Administrator
