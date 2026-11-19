@@ -41,7 +41,14 @@ def list_doctypes(
     emit_list(c, [{"name": name} for name in names], ["name"])
 
 
-def _summarize_field(df: Document, in_list_view: bool = False) -> Document:
+# The server never evaluates these JS expressions; only desk does. An agent
+# that writes through the API must see them to send input that desk accepts.
+_DEPENDS_ON_PROPERTIES = ("depends_on", "mandatory_depends_on", "read_only_depends_on")
+
+
+def _summarize_field(
+    df: Document, in_list_view: bool = False, is_submittable: bool = False
+) -> Document:
     summary: Document = {
         "fieldname": df.get("fieldname"),
         "label": df.get("label"),
@@ -51,6 +58,13 @@ def _summarize_field(df: Document, in_list_view: bool = False) -> Document:
         summary["options"] = df.get("options")
     if df.get("reqd"):
         summary["reqd"] = True
+    if df.get("read_only"):
+        summary["read_only"] = True
+    if is_submittable and df.get("allow_on_submit"):
+        summary["allow_on_submit"] = True
+    for prop in _DEPENDS_ON_PROPERTIES:
+        if df.get(prop):
+            summary[prop] = df.get(prop)
     if in_list_view:
         summary["in_list_view"] = bool(df.get("in_list_view"))
     return summary
@@ -98,8 +112,9 @@ def show_doctype(
 
     all_fields = meta.get("fields", [])
     layout = {"Section Break", "Column Break", "Tab Break", "HTML", "Heading"}
+    is_submittable = bool(meta.get("is_submittable"))
     fields = [
-        _summarize_field(f, in_list_view=not c.json)
+        _summarize_field(f, in_list_view=not c.json, is_submittable=is_submittable)
         for f in all_fields
         if f.get("fieldtype") not in layout
     ]
@@ -135,8 +150,21 @@ def show_doctype(
     if is_virtual:
         record["is_virtual"] = True
     emit_record(c, record, title=f"DocType {name}")
+    optional_columns = [
+        col
+        for col in ("read_only", "allow_on_submit", *_DEPENDS_ON_PROPERTIES)
+        if any(col in f for f in fields)
+    ]
     emit_list(
         c,
         fields,
-        ["fieldname", "label", "fieldtype", "options", "reqd", "in_list_view"],
+        [
+            "fieldname",
+            "label",
+            "fieldtype",
+            "options",
+            "reqd",
+            *optional_columns,
+            "in_list_view",
+        ],
     )
