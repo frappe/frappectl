@@ -108,6 +108,13 @@ def login(
             2,
         )
 
+    # Check before the prompts and the browser flow, so the user does not
+    # finish a login only to see the store fail.
+    try:
+        config.ensure_keyring()
+    except config.ConfigError as e:
+        raise fail(str(e), 2)
+
     norm_site = str(SiteURL.parse(site))
 
     # A friendly shorthand and a description are both prompted for (with sane

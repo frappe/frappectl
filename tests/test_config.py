@@ -353,3 +353,21 @@ def test_api_key_profile_stays_token_type(fake_config):
     creds = fake_config.resolve()
     assert creds.token_type == "token"
     assert creds.wire_token == "k:s"
+
+
+@pytest.mark.parametrize("backend", ["fail", "null"])
+def test_missing_keyring_suggests_headless_env_vars(backend, monkeypatch):
+    import importlib
+
+    import keyring
+
+    from frappectl import config
+
+    monkeypatch.setattr(
+        keyring,
+        "get_keyring",
+        lambda: importlib.import_module(f"keyring.backends.{backend}").Keyring(),
+    )
+    with pytest.raises(config.ConfigError) as e:
+        config.ensure_keyring()
+    assert "export FRAPPE_API_SECRET=" in str(e.value)
