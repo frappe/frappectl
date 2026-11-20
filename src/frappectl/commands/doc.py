@@ -18,6 +18,7 @@ from ..output import (
     err_console,
     fail,
     get_ctx,
+    reject_redacted,
 )
 from ..session import get_client
 
@@ -57,6 +58,7 @@ def _load_input(input_file: Optional[str], set_values: list[str]) -> Document:
 
     if set_values:
         data.update(helpers.parse_set(set_values))
+    reject_redacted(data)
     return data
 
 

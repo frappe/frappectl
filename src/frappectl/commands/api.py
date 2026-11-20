@@ -18,7 +18,7 @@ import typer
 
 from .. import helpers
 from ..errors import FrappeError
-from ..output import fail, get_ctx, print_json
+from ..output import fail, get_ctx, print_json, reject_redacted
 from ..session import get_client
 
 app = typer.Typer(
@@ -78,6 +78,8 @@ def api(
             raise fail(f"Could not read --input: {e}", 2)
 
     http_method = (method or ("POST" if body is not None else "GET")).upper()
+    if http_method != "GET":
+        reject_redacted([params, body])
 
     # A GET has no body, so --input on a GET only makes sense as query
     # parameters. Merge its top-level keys into the query alongside -F/-f.
