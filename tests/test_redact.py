@@ -1,4 +1,5 @@
 import json
+import time
 
 import httpx
 import pytest
@@ -63,6 +64,56 @@ def test_redacts_known_token_shapes_anywhere(text, secret):
     assert secret not in clean
 
 
+@pytest.mark.parametrize(
+    "text,secret",
+    [
+        ('if token == "abcd1234efgh":', "abcd1234efgh"),
+        ('if api_key != "abcd1234efgh":', "abcd1234efgh"),
+        ('api_secret: str = "abcd1234efgh"', "abcd1234efgh"),
+        ('api_secret: str | None = "abcd1234efgh"', "abcd1234efgh"),
+        ('url = "https://x.com/v1?q=1&api_key=abcd1234efgh"', "abcd1234efgh"),
+        ("API_SECRET=abcd1234efgh", "abcd1234efgh"),
+        ("export DB_PASSWORD=abcd1234efgh", "abcd1234efgh"),
+    ],
+)
+def test_redacts_comparisons_query_strings_and_env_lines(text, secret):
+    clean, count = redact(text)
+    assert count == 1
+    assert secret not in clean
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "api_key=settings.api_key",
+        'url = "https://x.com/v1?page=2&limit=20"',
+        'if status == "Open":',
+    ],
+)
+def test_keeps_code_and_urls_without_secrets(text):
+    assert redact(text) == (text, 0)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["password: str" + " " * 50_000 + "x", "token" + " " * 50_000, "a=" * 50_000],
+)
+def test_long_input_does_not_backtrack(text):
+    start = time.monotonic()
+    redact(text)
+    assert time.monotonic() - start < 1
+
+
+def test_redacts_everything_under_a_secret_named_key():
+    doc = {"credentials": {"user": "admin", "pass": "longsecretvalue"}, "pwd": "/home"}
+    clean, count = redact(doc)
+    assert count == 2
+    assert clean == {
+        "credentials": {"user": PLACEHOLDER, "pass": PLACEHOLDER},
+        "pwd": "/home",
+    }
+
+
 def test_redacts_secret_named_keys_in_documents():
     doc = {"name": "S", "api_secret": "z9y8x7w6", "new_password": "*****", "title": "x"}
     clean, count = redact(doc)
@@ -90,6 +141,7 @@ def test_redacts_nested_script_fields():
         ("secretary", False),
         ("passport_no", False),
         ("auth", False),
+        ("pwd", False),
         ("key", False),
     ],
 )

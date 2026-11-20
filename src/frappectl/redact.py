@@ -22,7 +22,6 @@ SHOW_SECRETS_ENV = "FRAPPECTL_SHOW_SECRETS"
 _SECRET_WORDS = {
     "password",
     "passwd",
-    "pwd",
     "secret",
     "token",
     "credential",
@@ -37,13 +36,23 @@ _SECRET_PAIRS = {
     ("secret", "key"),
 }
 
-# name = "value", "name": "value", headers["name"] = "value". `==` is a
-# comparison, not an assignment, so it is skipped.
-_ASSIGNMENT = re.compile(
-    r"""(?<![\w-])(?P<name>[A-Za-z_][\w-]*)"""
-    r"""(?P<sep>["'`]?\s*\]?\s*(?::|=(?!=))\s*)"""
-    r"""(?P<q>["'`])(?P<s>(?:\\.|(?!(?P=q))[^\n\\])*)(?P=q)"""
-)
+# A secret-named value: each pattern holds the name in `name` and the value in `s`.
+_NAMED_PATTERNS = [
+    # name = "v", "name": "v", headers["name"] = "v", name: str = "v", name == "v"
+    # Possessive quantifiers: a long run of spaces must not backtrack.
+    re.compile(
+        r"""(?<![\w-])(?P<name>[A-Za-z_][\w-]*+)["'`]?(?:\s*+\])?\s*+"""
+        r"""(?::\s*+[\w.\[\]]++(?:[ \t]*+\|[ \t]*+[\w.\[\]]++)*+\s*+=|[=!]=|=|:)\s*+"""
+        r"""(?P<q>["'`])(?P<s>(?:\\.|(?!(?P=q))[^\n\\])*+)(?P=q)"""
+    ),
+    # https://host/path?api_key=v&...
+    re.compile(r"[?&](?P<name>[A-Za-z_][\w.-]*)=(?P<s>[^&\s\"'`#]+)"),
+    # API_SECRET=v on its own line, as in .env files. Upper case only, so a Python
+    # line such as `api_key=settings.key` stays readable.
+    re.compile(
+        r"(?m)^[ \t]*(?:export[ \t]+)?(?P<name>[A-Z][A-Z0-9_]*)=(?P<s>[^\s\"'`#]+)"
+    ),
+]
 
 # Each pattern marks the secret part with the group `s`; the rest stays.
 _TOKEN_PATTERNS = [
@@ -92,25 +101,28 @@ class _Redactor:
     def __init__(self) -> None:
         self.count = 0
 
-    def value(self, value: Any, key: str | None = None) -> Any:
+    def value(self, value: Any, key: str | None = None, hidden: bool = False) -> Any:
+        """Redact ``value``. Every string under a secret-named key is a secret."""
+        hidden = hidden or (key is not None and is_secret_name(key))
         if isinstance(value, dict):
-            return {k: self.value(v, str(k)) for k, v in value.items()}
+            return {k: self.value(v, str(k), hidden) for k, v in value.items()}
         if isinstance(value, list):
-            return [self.value(v) for v in value]
+            return [self.value(v, hidden=hidden) for v in value]
         if not isinstance(value, str):
             return value
-        if key is not None and is_secret_name(key) and _is_real_secret(value):
+        if hidden and _is_real_secret(value):
             self.count += 1
             return PLACEHOLDER
         return self.text(value)
 
     def text(self, text: str) -> str:
-        text = _ASSIGNMENT.sub(self._replace_assignment, text)
+        for pattern in _NAMED_PATTERNS:
+            text = pattern.sub(self._replace_named, text)
         for pattern in _TOKEN_PATTERNS:
             text = pattern.sub(self._replace_group, text)
         return text
 
-    def _replace_assignment(self, match: re.Match[str]) -> str:
+    def _replace_named(self, match: re.Match[str]) -> str:
         if not is_secret_name(match["name"]) or not _is_real_secret(match["s"]):
             return match[0]
         return self._replace_group(match)
