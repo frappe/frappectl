@@ -29,6 +29,7 @@ from ..output import (
     fail,
     get_ctx,
     print_json,
+    reject_redacted,
 )
 from ..session import get_client
 
@@ -236,6 +237,7 @@ def _collect_params(fields: list[str], raw_fields: list[str]) -> dict[str, Any]:
             raise fail(f"-f expects key=value, got {item!r}", 2)
         k, v = item.split("=", 1)
         params[k.strip()] = v
+    reject_redacted(params)
     return params
 
 

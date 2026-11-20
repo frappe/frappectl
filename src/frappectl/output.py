@@ -18,6 +18,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from .redact import PLACEHOLDER, SHOW_SECRETS_ENV, contains_placeholder, redact
+
 # stderr console: progress, errors, prompts. Never pollutes stdout JSON.
 err_console = Console(stderr=True)
 _out_console = Console()
@@ -50,7 +52,7 @@ class Output:
         elif isinstance(record, dict):
             render_record(record, title=title)
         else:
-            _out_console.print(_scalar(record))
+            _out_console.print(_scalar(scrub(record)))
 
     def progress(self, message: str) -> None:
         err_console.print(f"[dim]{message}[/dim]")
@@ -147,6 +149,7 @@ def print_json(data: Any) -> None:
     A parse failure is a bug in the layout, so it goes to stderr, and the
     standard encoder writes the value instead.
     """
+    data = scrub(data)
     text = _dumps(data, 0)
     try:
         json.loads(text)
@@ -169,6 +172,28 @@ def fail(message: str, code: int = 1) -> "typer.Exit":
     return Output(json_mode=False).error(message, code)
 
 
+def scrub(value: Any) -> Any:
+    """Redact secrets from a value bound for stdout, and say so on stderr."""
+    clean, count = redact(value)
+    if count:
+        noun = "secret" if count == 1 else "secrets"
+        err_console.print(
+            f"[dim]redacted {count} {noun}; set {SHOW_SECRETS_ENV}=1 to show them.[/dim]"
+        )
+    return clean
+
+
+def reject_redacted(value: Any) -> None:
+    """Refuse a write that would replace a real secret with the placeholder."""
+    if contains_placeholder(value):
+        raise fail(
+            f"Input contains {PLACEHOLDER}, which frappectl put in place of a secret. "
+            "Sending it would overwrite the real value on the site. Remove that field "
+            f"from the input, or re-read with {SHOW_SECRETS_ENV}=1.",
+            2,
+        )
+
+
 def _scalar(value: Any) -> str:
     if value is None:
         return ""
@@ -183,6 +208,7 @@ def render_rows(
     rows: list[dict[str, Any]], columns: list[str], title: str | None = None
 ) -> None:
     """Render a list of dicts as a rich table on stdout."""
+    rows = scrub(rows)
     table = Table(title=title, header_style="bold cyan", show_lines=False)
     for col in columns:
         table.add_column(col, overflow="fold")
@@ -195,6 +221,7 @@ def render_rows(
 
 def render_record(record: dict[str, Any], title: str | None = None) -> None:
     """Render a single document as a two-column key/value table."""
+    record = scrub(record)
     table = Table(title=title, header_style="bold cyan", show_header=False, box=None)
     table.add_column("field", style="bold")
     table.add_column("value", overflow="fold")
@@ -220,6 +247,7 @@ def emit_source(source: str) -> None:
     """
     from rich.syntax import Syntax
 
+    source = scrub(source)
     _out_console.print(Syntax(source, "python", background_color="default"))
 
 
