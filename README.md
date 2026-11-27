@@ -162,6 +162,7 @@ it won't corrupt `--json` output.
 | `frappectl query <sql>` | Run read-only SQL through System Console and print a table. Requires System Manager or Administrator. |
 | `frappectl method search\|list\|show` | Discover whitelisted methods (RPC paths and doctype methods). |
 | `frappectl method call <path>` | Invoke an RPC method; add `--doctype/--name` to call a doctype method. |
+| `frappectl skill list\|show <name>` | List and read the skills open to you; `show --file <path>` reads a file of the skill. |
 | `frappectl file upload\|download` | Transfer files; upload supports `--doctype/--name` and `--private`. |
 | `frappectl api <path>` | Call raw v2 APIs: `frappectl api method/<path> -F key=value`. |
 | `frappectl guide` | Print the agent primer; no site or authentication needed. |
