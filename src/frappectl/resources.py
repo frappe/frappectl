@@ -221,6 +221,21 @@ class DiscoveryAPI:
             raise
 
 
+class SkillsAPI:
+    def __init__(self, transport: FrappeTransport):
+        self._transport = transport
+
+    def list(self) -> Any:
+        return self._transport.request("GET", "/api/v2/skill")
+
+    def show(self, name: str, file: str | None = None) -> Any:
+        return self._transport.request(
+            "GET",
+            endpoint_path("api", "v2", "skill", name),
+            params={"file": file} if file else None,
+        )
+
+
 class FilesAPI:
     def __init__(self, transport: FrappeTransport):
         self._transport = transport

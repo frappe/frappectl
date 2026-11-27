@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any, BinaryIO
 
 from .credentials import CredentialProvider
-from .resources import DiscoveryAPI, DocumentsAPI, FilesAPI, MethodsAPI
+from .resources import DiscoveryAPI, DocumentsAPI, FilesAPI, MethodsAPI, SkillsAPI
 from .transport import DEFAULT_TIMEOUT, Document, Filters, FrappeTransport
 
 __all__ = ["Document", "Filters", "FrappeClient"]
@@ -45,6 +45,7 @@ class FrappeClient:
         self.methods = MethodsAPI(self._transport)
         self.discovery = DiscoveryAPI(self._transport)
         self.files = FilesAPI(self._transport)
+        self.skills = SkillsAPI(self._transport)
 
     def close(self) -> None:
         self._transport.close()
@@ -156,6 +157,12 @@ class FrappeClient:
 
     def discovery_supported(self) -> bool:
         return self.discovery.supported()
+
+    def skill_list(self) -> Any:
+        return self.skills.list()
+
+    def skill_show(self, name: str, file: str | None = None) -> Any:
+        return self.skills.show(name, file)
 
     def call_document_method(
         self,

@@ -14,6 +14,7 @@ from .commands import auth, doc, doctype, file, report
 from .commands import guide as guide_cmd
 from .commands import method as method_cmd
 from .commands import query as query_cmd
+from .commands import skill as skill_cmd
 from .commands import update as update_cmd
 from .config import ConfigError
 from .errors import FrappeError, UsageError
@@ -40,6 +41,7 @@ app.add_typer(doctype.app, name="doctype")
 app.add_typer(file.app, name="file")
 app.add_typer(report.app, name="report")
 app.add_typer(method_cmd.app, name="method")
+app.add_typer(skill_cmd.app, name="skill")
 app.command(name="api", help=api_cmd.api.__doc__)(api_cmd.api)
 app.command(name="guide", help=guide_cmd.guide.__doc__)(guide_cmd.guide)
 app.command(name="update", help=update_cmd.update.__doc__)(update_cmd.update)

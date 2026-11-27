@@ -87,6 +87,13 @@ DISCOVER METHODS
   frappectl method call gameplan.api.get_unread_count -F project=1   # call an rpc method
   frappectl method call add_comment --doctype "User" --name Administrator -F comment_type=Comment
 
+SKILLS
+  A skill gives instructions for one kind of task. When a task matches a skill,
+  read it before you start, and follow it.
+  frappectl skill list                                          # skills you can read
+  frappectl skill show frappe/print-formats                     # the instructions
+  frappectl skill show frappe/print-formats --file references/x.md   # a file the skill mentions
+
 RAW API
   frappectl api method/frappe.client.get_count -F doctype=User    # -F sends a typed value, -f sends a string
   frappectl api method/frappe.client.get_list -F doctype=User -F 'filters:={"enabled":1}'  # := sends raw JSON
